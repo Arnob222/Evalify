@@ -129,3 +129,10 @@ object-fit:contain;
 font-weight:700;
 font-size:35px;
 }
+
+#passwordStrength{
+display:block;
+margin-top:5px;
+font-size:12px;
+color:var(--text-muted);
+}
