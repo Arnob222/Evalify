@@ -1,0 +1,73 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evalify - Create Account</title>
+    <link rel="icon" type="image/png" href="{% static 'images/Evalify_icon.png' %}">
+
+    <link rel="stylesheet" href="{% static 'css/sign_up_style.css' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="signup-container">
+
+
+<div class="logo-section">
+
+<img src="{% static 'images/evalify_icon.png' %}" class="logo-img" alt="Evalify Logo">
+
+<span class="logo-text">Evalify</span>
+
+</div>
+
+        <div class="signup-card">
+            <h2>Create Account</h2>
+            
+            <button class="google-btn">
+                <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" alt="Google">
+                Sign up with Google
+            </button>
+
+            <div class="divider">OR</div>
+
+            <form>
+                <div class="input-group">
+                    <label>Profile name</label>
+                    <input type="text" placeholder="Enter your profile name">
+                </div>
+
+                <div class="input-group">
+                    <label>Email</label>
+                    <input type="email" placeholder="Enter your email address">
+                </div>
+
+                <div class="input-group">
+                    <div class="label-row">
+                        <label>Password</label>
+                        <span class="toggle-password" id="togglePass">👁 Hide</span>
+                    </div>
+                    <input type="password" id="passwordField" placeholder="Enter your password">
+                    <small>Use 8 or more characters with a mix of letters, numbers & symbols</small>
+                </div>
+
+                <div class="role-selection">
+                    <span>I am a</span>
+                    <label><input type="radio" name="role" value="student"> Student</label>
+                    <label><input type="radio" name="role" value="faculty"> Faculty</label>
+                </div>
+
+                <p class="terms">
+                    By creating an account, you agree to the <a href="#">Terms of use</a> and <a href="#">Privacy Policy</a>.
+                </p>
+
+                <button type="submit" class="submit-btn">Sign up</button>
+            </form>
+
+            <p class="login-link">Already have an account? <a href="{% url 'sign_in_html' %}">Log in</a></p>
+        </div>
+    </div>
+    <script src="{% static 'js/sign_up_script.js' %}"></script>
+</body>
+</html>

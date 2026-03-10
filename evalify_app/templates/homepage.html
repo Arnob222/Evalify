@@ -1,0 +1,71 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evalify - Smart Assessment Platform</title>
+    <link rel="icon" type="image/png" href="{% static 'images/Evalify_icon.png' %}">
+
+    <link rel="stylesheet" href="{% static 'css/homepage_style.css' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <nav>
+        <div class="logo">
+    <img src="{% static 'images/evalify_icon.png' %}" alt="Evalify Logo" class="nav-logo">
+    <span class="logo-text">Evalify</span>
+</div>
+        <div class="nav-buttons">
+            <a href="{% url 'sign_up_html' %}">
+    <button class="btn-signup">SIGN UP</button>
+</a>
+
+<a href="{% url 'sign_in_html' %}">
+    <button class="btn-signin">SIGN IN</button>
+</a>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="badge">• OBE-Based Smart Assessment Platform</div>
+        <h1>Measure Learning.<br><span>Improve Outcomes.</span></h1>
+        <p class="description">
+            Link every question to CLOs & PLOs. Track attainment in real time. 
+            Fair, transparent, outcome-based assessment for modern education.
+        </p>
+    </header>
+
+    <section class="mode-selection">
+        <div class="mode-card faculty" id="facultyCard">
+            <strong>Faculty Mode</strong>
+            <small>Create assessments & grade with CLO/PLO</small>
+        </div>
+        <div class="mode-card student" id="studentCard">
+            <strong>Student Mode</strong>
+            <small>Submit work & view CLO/PLO results</small>
+        </div>
+    </section>
+
+    <footer class="features-grid">
+        <div class="feature-item">
+            <h3>CLO & PLO Linked</h3>
+            <p>Every question maps to Course & Program Learning Outcomes</p>
+        </div>
+        <div class="feature-item">
+            <h3>Smart Analytics</h3>
+            <p>Every question maps to Course & Program Learning Outcomes</p>
+        </div>
+        <div class="feature-item">
+            <h3>Integrity Checks</h3>
+            <p>Every question maps to Course & Program Learning Outcomes</p>
+        </div>
+        <div class="feature-item">
+            <h3>Fair Assessment</h3>
+            <p>Every question maps to Course & Program Learning Outcomes</p>
+        </div>
+    </footer>
+
+    <script src="{% static 'js/homepage_script.js' %}"></script></body>
+</html>

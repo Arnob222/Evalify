@@ -1,0 +1,103 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Evalify - Sign In</title>
+
+<link rel="icon" type="image/png" href="{% static 'images/Evalify_icon.png' %}">
+
+<link rel="stylesheet" href="{% static 'css/sign_in_style.css' %}">
+
+</head>
+
+<body>
+
+<div class="signup-container">
+
+
+<div class="logo-section">
+
+<img src="{% static 'images/evalify_icon.png' %}" class="logo-img" alt="Evalify Logo">
+
+<span class="logo-text">Evalify</span>
+
+</div>
+
+<div class="signup-card">
+
+<h2>Sign In To Continue</h2>
+
+<button class="google-btn">
+<img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png">
+Continue with Google
+</button>
+
+<div class="divider">OR</div>
+
+<form method="POST">
+
+{% csrf_token %}
+
+<div class="input-group">
+
+<label>Email</label>
+
+<input type="email" name="email" placeholder="Enter your email address" required>
+
+</div>
+
+<div class="input-group">
+
+<div class="label-row">
+
+<label>Password</label>
+
+<span class="toggle-password" id="togglePass">👁 Hide</span>
+
+</div>
+
+<input type="password" id="passwordField" name="password" placeholder="Enter your password" required>
+
+</div>
+
+<div class="label-row" style="margin-bottom:20px">
+
+<label style="display:flex;align-items:center;gap:8px;font-size:12px">
+
+<input type="checkbox" name="remember">
+
+Remember me
+
+</label>
+
+<a href="#" style="color:var(--text-muted);font-size:12px;text-decoration:none">
+
+Forget your password?
+
+</a>
+
+</div>
+
+<button type="submit" class="submit-btn">Sign In</button>
+
+</form>
+
+<p class="login-link" style="margin-top:20px">
+
+Don't have an account?
+
+<a href="{% url 'sign_up_html' %}">Sign up</a>
+
+</p>
+
+</div>
+
+</div>
+
+<script src="{% static 'js/sign_in_script.js' %}"></script>
+
+</body>
+</html>
