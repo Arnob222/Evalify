@@ -1,0 +1,210 @@
+{% extends 'student/base.html' %}
+{% block nav_assignments %}active{% endblock %}
+
+{% block content %}
+<div class="page-title">Assignments &amp; Assessments</div>
+<div class="page-sub">View and submit assessments for your enrolled courses.</div>
+
+{% if assignments_with_status %}
+  {% for assessment, submission in assignments_with_status %}
+  <div class="list-item">
+    <div class="list-icon" style="
+      {% if assessment.assessment_type == 'assignment' %}background:#dbeafe;
+      {% elif assessment.assessment_type == 'quiz' %}background:#fef9c3;
+      {% elif assessment.assessment_type == 'mid' %}background:#fde68a;
+      {% elif assessment.assessment_type == 'ct' %}background:#d1fae5;
+      {% else %}background:#fee2e2;{% endif %}
+      font-size:20px;">
+      {% if assessment.assessment_type == 'assignment' %}📝
+      {% elif assessment.assessment_type == 'quiz' %}❓
+      {% elif assessment.assessment_type == 'mid' %}📖
+      {% elif assessment.assessment_type == 'ct' %}✏️
+      {% else %}🎓{% endif %}
+    </div>
+    <div class="list-body">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="list-title">{{ assessment.title }}</span>
+        <span class="tag" style="
+          {% if assessment.assessment_type == 'assignment' %}background:#dbeafe;color:#1d4ed8;
+          {% elif assessment.assessment_type == 'quiz' %}background:#fef9c3;color:#854d0e;
+          {% elif assessment.assessment_type == 'mid' %}background:#fde68a;color:#92400e;
+          {% elif assessment.assessment_type == 'ct' %}background:#d1fae5;color:#065f46;
+          {% else %}background:#fee2e2;color:#991b1b;{% endif %}
+        ">{{ assessment.get_assessment_type_display }}</span>
+      </div>
+      <div class="list-meta">
+        {{ assessment.course.code }}: {{ assessment.course.name }}
+        {% if assessment.due_date %}&nbsp;·&nbsp; Due: {{ assessment.due_date }}{% endif %}
+        &nbsp;·&nbsp; Total Marks: {{ assessment.total_marks }}
+        &nbsp;·&nbsp; Questions: {{ assessment.questions.count }}
+      </div>
+      {% if assessment.description %}
+        <div style="font-size:12px;color:var(--gray);margin-top:3px;">{{ assessment.description }}</div>
+      {% endif %}
+
+      <!-- Questions preview -->
+      {% if assessment.questions.all %}
+      <div style="margin-top:8px;">
+        {% for q in assessment.questions.all %}
+        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:6px;">
+          <div style="font-size:13px;font-weight:600;">Q{{ q.order }}: {{ q.text }}</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:3px;">
+            Marks: {{ q.max_marks }}
+            {% if q.clos.all %}
+              &nbsp;·&nbsp;
+              {% for c in q.clos.all %}<span class="tag tag-clo" style="font-size:10px;">{{ c.code }}</span>{% endfor %}
+            {% endif %}
+            {% if q.plos.all %}
+              &nbsp;
+              {% for p in q.plos.all %}<span class="tag tag-plo" style="font-size:10px;">{{ p.code }}</span>{% endfor %}
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Submission status -->
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        {% if submission %}
+          <span class="tag tag-graded">✓ Submitted on {{ submission.submitted_at|date:"M d, Y" }}</span>
+          {% if submission.submitted_file %}
+            <a href="{{ submission.submitted_file.url }}" target="_blank"
+               style="font-size:12px;color:var(--teal);text-decoration:none;">
+              📎 Download File
+            </a>
+          {% endif %}
+          {% if submission.status == 'graded' %}
+            <span class="tag tag-graded">Grade: {{ submission.total_score }}/{{ assessment.total_marks }}</span>
+          {% endif %}
+          {% if submission.feedback %}
+            <div style="width:100%;font-size:12px;color:var(--gray);margin-top:4px;
+                        background:#f0fdf4;border-radius:5px;padding:6px 10px;">
+              Feedback: {{ submission.feedback }}
+            </div>
+          {% endif %}
+        {% else %}
+          <span class="tag tag-pending">Pending</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if not submission %}
+      <button class="btn btn-primary btn-sm"
+              onclick="openSubmitModal({{ assessment.id }}, '{{ assessment.title|escapejs }}',
+                       '{{ assessment.get_assessment_type_display }}', {{ assessment.total_marks }})">
+        Submit
+      </button>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty">
+    <div class="empty-icon">📋</div>
+    <div class="empty-title">No assessments yet</div>
+    <div style="font-size:13px;">Assessments from your enrolled courses will appear here.</div>
+  </div>
+{% endif %}
+
+
+<!-- Submit Modal -->
+<div class="modal-overlay" id="submitModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="modalTitle">Submit</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:2px;" id="modalSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('submitModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="submitForm" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="form-group">
+          <label class="form-label">
+            Your Answer
+            <span style="color:var(--gray);font-weight:400;">(optional if uploading a file)</span>
+          </label>
+          <textarea class="form-control" name="content" id="answerText" rows="5"
+                    placeholder="Type your answer here..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            Upload File
+            <span style="color:var(--gray);font-weight:400;">(optional if answer is typed)</span>
+          </label>
+          <input class="form-control" type="file" name="submitted_file" id="fileInput"
+                 accept=".pdf,.doc,.docx,.txt,.zip,.py,.java,.cpp,.c,.js,.png,.jpg,.jpeg">
+          <div style="font-size:11px;color:var(--gray);margin-top:4px;">
+            Accepted: PDF, Word, TXT, ZIP, code files (.py .java .cpp .c .js), images
+          </div>
+        </div>
+        <div id="submitError" style="color:var(--red);font-size:13px;display:none;margin-top:6px;"></div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary btn-full" id="submitBtn" onclick="doSubmit()">Submit</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentAssessmentId = null;
+
+function openSubmitModal(id, title, typeLabel, marks) {
+  currentAssessmentId = id;
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalSub').textContent = typeLabel + ' · ' + marks + ' marks';
+  document.getElementById('answerText').value = '';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('submitError').style.display = 'none';
+  document.getElementById('submitBtn').disabled = false;
+  document.getElementById('submitBtn').textContent = 'Submit';
+  openModal('submitModal');
+}
+
+async function doSubmit() {
+  const errEl  = document.getElementById('submitError');
+  const btn    = document.getElementById('submitBtn');
+  const answer = document.getElementById('answerText').value.trim();
+  const file   = document.getElementById('fileInput').files[0];
+
+  if (!answer && !file) {
+    errEl.textContent = 'Please type an answer or upload a file.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  errEl.style.display = 'none';
+
+  const formData = new FormData(document.getElementById('submitForm'));
+  try {
+    const res = await fetch(`/student/assignments/${currentAssessmentId}/submit/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrf() },
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeModal('submitModal');
+      location.reload();
+    } else {
+      errEl.textContent = data.error || 'Submission failed.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+    }
+  } catch(e) {
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Submit';
+  }
+}
+</script>
+{% endblock %}

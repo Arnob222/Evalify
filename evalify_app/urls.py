@@ -27,6 +27,18 @@ urlpatterns = [
     path('faculty/announcements/<int:ann_id>/delete/', views.delete_announcement, name='delete_announcement'),
     path('faculty/plo/add/', views.add_plo, name='add_plo'), 
 
+    #Faculty Assignments
+    path('faculty/assignments/', views.faculty_assignments, name='faculty_assignments'),
+    path('faculty/assignments/create/', views.create_assignment, name='create_assignment'),
+    path('faculty/assignments/<int:assignment_id>/delete/', views.delete_assignment, name='delete_assignment'),
+    path('faculty/assignments/<int:assignment_id>/publish/', views.publish_assessment, name='publish_assessment'),
+
+    #Study Materials
+    path('faculty/materials/', views.faculty_materials, name='faculty_materials'),
+    path('faculty/materials/upload/', views.upload_material, name='upload_material'),
+    path('faculty/materials/<int:material_id>/delete/', views.delete_material, name='delete_material'),
+    path('student/materials/', views.student_materials, name='student_materials'),
+
     #Student
     path('student/dashboard/', views.student_dashboard, name='student_dashboard'),
     path('student/courses/', views.student_courses, name='student_courses'),
@@ -35,4 +47,6 @@ urlpatterns = [
     path('student/submissions/<int:assessment_id>/submit/', views.submit_assessment, name='submit_assessment'),
     path('student/clo-results/', views.student_clo_results, name='student_clo_results'),
     path('student/notifications/', views.student_notifications, name='student_notifications'),
+    path('student/assignments/', views.student_assignments, name='student_assignments'),
+    path('student/assignments/<int:assignment_id>/submit/', views.submit_assignment, name='submit_assignment'),
 ]

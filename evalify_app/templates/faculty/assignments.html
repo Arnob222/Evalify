@@ -1,0 +1,511 @@
+{% extends 'faculty/base.html' %}
+{% block nav_assignments %}active{% endblock %}
+
+{% block content %}
+
+{% if not selected_course %}
+<!-- ═══════════════════════════════════════════════════════════════
+     LEVEL 1 — Course List
+═══════════════════════════════════════════════════════════════ -->
+<div class="page-title">Assessments</div>
+<div class="page-sub">Select a course to view and manage its assessments.</div>
+
+{% if courses %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:8px;">
+    {% for c in courses %}
+    <a href="?course={{ c.id }}" style="text-decoration:none;color:inherit;">
+      <div style="background:#fff;border:1px solid var(--border);border-radius:12px;
+                  padding:20px;cursor:pointer;transition:box-shadow .2s,border-color .2s;"
+           onmouseover="this.style.boxShadow='0 4px 16px rgba(32,178,170,.15)';this.style.borderColor='var(--teal)';"
+           onmouseout="this.style.boxShadow='none';this.style.borderColor='var(--border)';">
+
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--teal);letter-spacing:.5px;
+                        text-transform:uppercase;">{{ c.code }}</div>
+            <div style="font-size:16px;font-weight:700;margin-top:2px;">{{ c.name }}</div>
+          </div>
+          <span style="font-size:22px;">📚</span>
+        </div>
+
+        <div style="font-size:12px;color:var(--gray);margin-bottom:14px;">
+          {{ c.semester }} &nbsp;·&nbsp; {{ c.credit_hours }} Credit Hrs
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <div style="flex:1;background:#f8fafc;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:20px;font-weight:800;color:var(--green);">{{ c.published_count }}</div>
+            <div style="font-size:11px;color:var(--gray);">Published</div>
+          </div>
+          <div style="flex:1;background:#fffbeb;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:20px;font-weight:800;color:var(--orange);">{{ c.draft_count }}</div>
+            <div style="font-size:11px;color:var(--gray);">Drafts</div>
+          </div>
+          <div style="flex:1;background:#f8fafc;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:20px;font-weight:800;">{{ c.total_count }}</div>
+            <div style="font-size:11px;color:var(--gray);">Total</div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;text-align:right;font-size:13px;color:var(--teal);font-weight:500;">
+          Open →
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty">
+    <div class="empty-icon">📚</div>
+    <div class="empty-title">No courses yet</div>
+    <div style="font-size:13px;">Create a course first from Courses &amp; CLOs.</div>
+  </div>
+{% endif %}
+
+
+{% else %}
+<!-- ═══════════════════════════════════════════════════════════════
+     LEVEL 2 — Assessments for a Course
+═══════════════════════════════════════════════════════════════ -->
+
+<!-- Breadcrumb / back -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+  <a href="{% url 'faculty_assignments' %}"
+     style="display:inline-flex;align-items:center;gap:6px;font-size:13px;
+            color:var(--gray);text-decoration:none;padding:6px 12px;border:1px solid var(--border);
+            border-radius:7px;background:#fff;"
+     onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)';"
+     onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--gray)';">
+    ← All Courses
+  </a>
+  <span style="color:var(--light);">/</span>
+  <span style="font-size:14px;font-weight:600;">{{ selected_course.code }}: {{ selected_course.name }}</span>
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
+  <div>
+    <div class="page-title">{{ selected_course.name }}</div>
+    <div class="page-sub">{{ selected_course.semester }} &nbsp;·&nbsp; {{ selected_course.credit_hours }} Credit Hours</div>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('createModal')">+ Create Assessment</button>
+</div>
+
+<!-- Stats -->
+<div class="g-stats" style="margin-bottom:24px;">
+  <div class="g-stat">
+    <div><div class="g-stat-label">Drafts</div>
+    <div class="g-stat-val" style="color:var(--orange);">{{ draft_count }}</div></div>
+    <span style="font-size:24px;margin-left:10px;">📝</span>
+  </div>
+  <div class="g-stat">
+    <div><div class="g-stat-label">Published</div>
+    <div class="g-stat-val" style="color:var(--green);">{{ published_count }}</div></div>
+    <span style="font-size:24px;margin-left:10px;">✅</span>
+  </div>
+  <div class="g-stat">
+    <div><div class="g-stat-label">Total Submissions</div>
+    <div class="g-stat-val">{{ total_subs }}</div></div>
+    <span style="font-size:24px;margin-left:10px;">📨</span>
+  </div>
+</div>
+
+
+<!-- ── Drafts ──────────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+  <div style="font-size:15px;font-weight:700;">Drafts — Pending Publish</div>
+  {% if draft_count %}
+  <span style="background:#fef3c7;color:#92400e;font-size:12px;font-weight:700;
+               padding:2px 10px;border-radius:20px;">{{ draft_count }}</span>
+  {% endif %}
+</div>
+
+{% if drafts %}
+  {% for a in drafts %}
+  <div id="asgn-{{ a.id }}"
+       style="background:#fff;border:2px solid #fcd34d;border-radius:12px;
+              padding:18px 20px;margin-bottom:14px;">
+    <div style="display:flex;align-items:flex-start;gap:14px;">
+      <div style="font-size:22px;flex-shrink:0;">
+        {% if a.assessment_type == 'quiz' %}❓
+        {% elif a.assessment_type == 'mid' %}📖
+        {% elif a.assessment_type == 'ct' %}✏️
+        {% else %}🎓{% endif %}
+      </div>
+      <div style="flex:1;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:15px;font-weight:700;">{{ a.title }}</span>
+          <span class="tag" style="
+            {% if a.assessment_type == 'quiz' %}background:#fef9c3;color:#854d0e;
+            {% elif a.assessment_type == 'mid' %}background:#fde68a;color:#92400e;
+            {% elif a.assessment_type == 'ct' %}background:#d1fae5;color:#065f46;
+            {% else %}background:#fee2e2;color:#991b1b;{% endif %}">
+            {{ a.get_assessment_type_display }}
+          </span>
+          <span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;
+                       padding:2px 8px;border-radius:4px;">DRAFT</span>
+        </div>
+        <div class="list-meta" style="margin-top:4px;">
+          {% if a.due_date %}Due: {{ a.due_date }} &nbsp;·&nbsp;{% endif %}
+          Total Marks: {{ a.total_marks }} &nbsp;·&nbsp; Questions: {{ a.question_count }}
+        </div>
+        {% if a.description %}
+        <div style="font-size:12px;color:var(--gray);margin-top:3px;">{{ a.description }}</div>
+        {% endif %}
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="btn btn-primary btn-sm" onclick="publishAssessment({{ a.id }}, this)">Publish</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:#fca5a5;"
+                onclick="deleteAssessment({{ a.id }})">Delete</button>
+      </div>
+    </div>
+
+    <!-- CLO/PLO Mapping per Question -->
+    {% if a.questions.all %}
+    <div style="margin-top:14px;border-top:1px solid #fcd34d;padding-top:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--gray);margin-bottom:8px;
+                  letter-spacing:.4px;text-transform:uppercase;">CLO / PLO Mapping</div>
+      {% for q in a.questions.all %}
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
+                  padding:10px 14px;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px;">
+          Q{{ q.order }}: {{ q.text }}
+          <span style="font-size:11px;font-weight:400;color:var(--gray);margin-left:6px;">
+            ({{ q.max_marks }} marks)
+          </span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+          {% if q.clos.all %}
+            {% for c in q.clos.all %}<span class="tag tag-clo">{{ c.code }}</span>{% endfor %}
+          {% else %}
+            <span style="font-size:11px;color:#d97706;">⚠ No CLO mapped</span>
+          {% endif %}
+          &nbsp;
+          {% if q.plos.all %}
+            {% for p in q.plos.all %}<span class="tag tag-plo">{{ p.code }}</span>{% endfor %}
+          {% else %}
+            <span style="font-size:11px;color:#d97706;">⚠ No PLO mapped</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="margin-top:10px;font-size:12px;color:#d97706;
+                border-top:1px solid #fcd34d;padding-top:10px;">
+      ⚠ No questions added.
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% else %}
+  <div style="background:#fffbeb;border:1px dashed #fcd34d;border-radius:10px;
+              padding:24px;text-align:center;color:var(--gray);margin-bottom:14px;">
+    <div style="font-size:28px;margin-bottom:6px;">📋</div>
+    <div style="font-size:14px;font-weight:600;">No drafts</div>
+    <div style="font-size:12px;">Quiz, Mid, Class Test, and Final saved here before publishing.</div>
+  </div>
+{% endif %}
+
+
+<!-- ── Published ──────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;gap:10px;margin-top:28px;margin-bottom:12px;">
+  <div style="font-size:15px;font-weight:700;">Published Assessments</div>
+  {% if published_count %}
+  <span style="background:#dcfce7;color:#166534;font-size:12px;font-weight:700;
+               padding:2px 10px;border-radius:20px;">{{ published_count }}</span>
+  {% endif %}
+</div>
+
+{% if published_list %}
+  {% for a in published_list %}
+  <div class="list-item" id="asgn-{{ a.id }}">
+    <div class="list-icon teal" style="font-size:20px;">
+      {% if a.assessment_type == 'assignment' %}📝
+      {% elif a.assessment_type == 'quiz' %}❓
+      {% elif a.assessment_type == 'mid' %}📖
+      {% elif a.assessment_type == 'ct' %}✏️
+      {% else %}🎓{% endif %}
+    </div>
+    <div class="list-body">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="list-title">{{ a.title }}</span>
+        <span class="tag" style="
+          {% if a.assessment_type == 'assignment' %}background:#dbeafe;color:#1d4ed8;
+          {% elif a.assessment_type == 'quiz' %}background:#fef9c3;color:#854d0e;
+          {% elif a.assessment_type == 'mid' %}background:#fde68a;color:#92400e;
+          {% elif a.assessment_type == 'ct' %}background:#d1fae5;color:#065f46;
+          {% else %}background:#fee2e2;color:#991b1b;{% endif %}">
+          {{ a.get_assessment_type_display }}
+        </span>
+        <span style="background:#dcfce7;color:#166534;font-size:11px;font-weight:700;
+                     padding:2px 8px;border-radius:4px;">✓ PUBLISHED</span>
+      </div>
+      <div class="list-meta">
+        {% if a.due_date %}Due: {{ a.due_date }} &nbsp;·&nbsp;{% endif %}
+        Marks: {{ a.total_marks }} &nbsp;·&nbsp;
+        Questions: {{ a.question_count }} &nbsp;·&nbsp;
+        Submissions: {{ a.submission_count }}
+      </div>
+      {% if a.description %}
+      <div style="font-size:12px;color:var(--gray);margin-top:3px;">{{ a.description }}</div>
+      {% endif %}
+    </div>
+    <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:#fca5a5;"
+            onclick="deleteAssessment({{ a.id }})">Delete</button>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty">
+    <div class="empty-icon">✅</div>
+    <div class="empty-title">No published assessments yet</div>
+    <div style="font-size:13px;">Create an Assignment (auto-publishes) or publish a Draft above.</div>
+  </div>
+{% endif %}
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     CREATE MODAL
+═══════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal" style="max-width:780px;">
+    <div class="modal-head">
+      <span class="modal-title">Create Assessment — {{ selected_course.code }}</span>
+      <button class="modal-close" onclick="closeModal('createModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <div id="typeBanner" style="border-radius:8px;padding:10px 14px;font-size:13px;
+                                   margin-bottom:14px;display:flex;align-items:center;gap:8px;"></div>
+
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;
+                  padding:16px;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:12px;">Basic Info</div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-control" id="typeSelect" onchange="updateBanner()">
+            <option value="assignment">Assignment</option>
+            <option value="quiz">Quiz</option>
+            <option value="mid">Mid Exam</option>
+            <option value="ct">Class Test</option>
+            <option value="final">Final Exam</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input class="form-control" id="aTitle" placeholder="e.g. Mid Term – Data Structures">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description / Instructions</label>
+          <textarea class="form-control" id="aDesc" rows="2"
+                    placeholder="Optional instructions for students..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" id="dueDateLabel">Due Date <span style="color:var(--red);">*</span></label>
+            <input class="form-control" id="aDue" type="date">
+            <div id="dueDateNote" style="font-size:11px;color:var(--gray);margin-top:3px;display:none;">
+              Optional for this type
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Total Marks
+              <span style="color:var(--gray);font-weight:400;">(auto from questions)</span>
+            </label>
+            <input class="form-control" id="aMarks" type="number" min="1"
+                   placeholder="Auto-calculated" readonly style="background:#f3f4f6;">
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:700;color:var(--teal);">Questions &amp; CLO/PLO Mapping</div>
+        <button class="btn btn-outline btn-sm" type="button" onclick="addQuestion()">+ Add Question</button>
+      </div>
+      <div id="questionsContainer"></div>
+      <div id="noQMsg" style="font-size:12px;color:var(--gray);padding:8px 0;">No questions added yet.</div>
+
+      <div id="createError" style="color:var(--red);font-size:13px;display:none;margin-top:8px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary btn-full" onclick="submitCreate()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- PLO data -->
+<script id="ploData" type="application/json">
+[{% for p in plos %}{"id":{{ p.id }},"code":"{{ p.code }}","desc":"{{ p.description|truncatechars:60|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]
+</script>
+<!-- Selected course CLOs -->
+<script id="courseClosData" type="application/json">
+[{% for clo in selected_course.clos.all %}{"id":{{ clo.id }},"code":"{{ clo.code }}","description":"{{ clo.description|truncatechars:50|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]
+</script>
+
+{% endif %}{# end if not selected_course #}
+
+{% endblock %}
+
+
+{% block scripts %}
+{% if selected_course %}
+<script>
+const ALL_PLOS   = JSON.parse(document.getElementById('ploData').textContent);
+const COURSE_CLOS = JSON.parse(document.getElementById('courseClosData').textContent);
+let qCount = 0;
+
+// ── Banner ────────────────────────────────────────────────────────────────
+function updateBanner() {
+  const type    = document.getElementById('typeSelect').value;
+  const banner  = document.getElementById('typeBanner');
+  const noteEl  = document.getElementById('dueDateNote');
+  const labelEl = document.getElementById('dueDateLabel');
+
+  if (type === 'assignment') {
+    banner.style.cssText = 'border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px;background:#dbeafe;border:1px solid #93c5fd;';
+    banner.innerHTML = '📝 <strong>Assignment</strong> — will be <strong style="color:#1d4ed8;">published immediately</strong> and visible to enrolled students.';
+    labelEl.innerHTML = 'Due Date <span style="color:var(--red);">*</span>';
+    noteEl.style.display = 'none';
+  } else {
+    const labels = {quiz:'Quiz', mid:'Mid Exam', ct:'Class Test', final:'Final Exam'};
+    banner.style.cssText = 'border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px;background:#fffbeb;border:1px solid #fcd34d;';
+    banner.innerHTML = `📋 <strong>${labels[type]}</strong> — saved as <strong style="color:#92400e;">Draft</strong>. Map CLO/PLO, then Publish when ready.`;
+    labelEl.textContent = 'Due Date';
+    noteEl.style.display = 'block';
+  }
+}
+updateBanner();
+
+// ── Question card ─────────────────────────────────────────────────────────
+function addQuestion() {
+  qCount++;
+  const n = qCount;
+  const card = document.createElement('div');
+  card.className = 'q-card';
+  card.id = `qcard-${n}`;
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span class="q-label">Question ${n}</span>
+      <button type="button" class="btn btn-outline btn-sm"
+              style="color:var(--red);padding:3px 10px;" onclick="removeQuestion(${n})">✕ Remove</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Question Text</label>
+      <textarea class="form-control q-text" rows="2" placeholder="Enter question text..."></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:110px 1fr 1fr;gap:12px;align-items:start;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Marks</label>
+        <input type="number" class="form-control q-marks" value="10" min="1" oninput="calcTotal()">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">CLO(s)</label>
+        <div class="q-clo-list" style="max-height:110px;overflow-y:auto;border:1px solid var(--border);
+             border-radius:7px;padding:6px;background:#fff;">${buildCloHtml()}</div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">PLO(s)</label>
+        <div class="q-plo-list" style="max-height:110px;overflow-y:auto;border:1px solid var(--border);
+             border-radius:7px;padding:6px;background:#fff;">${buildPloHtml()}</div>
+      </div>
+    </div>`;
+  document.getElementById('questionsContainer').appendChild(card);
+  document.getElementById('noQMsg').style.display = 'none';
+  calcTotal();
+}
+
+function buildCloHtml() {
+  if (!COURSE_CLOS.length) return '<span style="font-size:11px;color:var(--light);">No CLOs in this course</span>';
+  return COURSE_CLOS.map(c => `
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;cursor:pointer;">
+      <input type="checkbox" value="${c.id}" style="accent-color:var(--teal);">
+      <b>${c.code}</b>: ${c.description}
+    </label>`).join('');
+}
+
+function buildPloHtml() {
+  if (!ALL_PLOS.length) return '<span style="font-size:11px;color:var(--light);">No PLOs defined</span>';
+  return ALL_PLOS.map(p => `
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;cursor:pointer;">
+      <input type="checkbox" value="${p.id}" style="accent-color:var(--teal);">
+      <b>${p.code}</b>: ${p.desc}
+    </label>`).join('');
+}
+
+function removeQuestion(n) {
+  document.getElementById(`qcard-${n}`)?.remove();
+  if (!document.querySelectorAll('.q-card').length) {
+    document.getElementById('noQMsg').style.display = 'block';
+    document.getElementById('aMarks').value = '';
+  }
+  calcTotal();
+}
+
+function calcTotal() {
+  let t = 0;
+  document.querySelectorAll('.q-marks').forEach(i => t += parseInt(i.value) || 0);
+  document.getElementById('aMarks').value = t || '';
+}
+
+// ── Submit ────────────────────────────────────────────────────────────────
+async function submitCreate() {
+  const errEl = document.getElementById('createError');
+  const type  = document.getElementById('typeSelect').value;
+  const title = document.getElementById('aTitle').value.trim();
+  const desc  = document.getElementById('aDesc').value.trim();
+  const due   = document.getElementById('aDue').value;
+  errEl.style.display = 'none';
+
+  if (!title) { errEl.textContent='Title is required.'; errEl.style.display='block'; return; }
+  if (type === 'assignment' && !due) {
+    errEl.textContent='Due date is required for assignments.'; errEl.style.display='block'; return;
+  }
+
+  const questions = [];
+  let valid = true;
+  document.querySelectorAll('.q-card').forEach(card => {
+    const text  = card.querySelector('.q-text').value.trim();
+    const marks = parseInt(card.querySelector('.q-marks').value) || 0;
+    if (!text) { errEl.textContent='All question texts are required.'; errEl.style.display='block'; valid=false; return; }
+    const clo_ids = [...card.querySelectorAll('.q-clo-list input:checked')].map(i=>parseInt(i.value));
+    const plo_ids = [...card.querySelectorAll('.q-plo-list input:checked')].map(i=>parseInt(i.value));
+    questions.push({ text, max_marks: marks, clo_ids, plo_ids });
+  });
+  if (!valid) return;
+
+  const data = await apiPost("{% url 'create_assignment' %}", {
+    course_id: {{ selected_course.id }},
+    assessment_type: type, title, description: desc,
+    due_date: due, total_marks: parseInt(document.getElementById('aMarks').value)||0, questions
+  });
+
+  if (data.success) {
+    location.reload();
+  } else {
+    errEl.textContent = data.error || 'Failed to create assessment.';
+    errEl.style.display = 'block';
+  }
+}
+
+// ── Publish ───────────────────────────────────────────────────────────────
+async function publishAssessment(id, btn) {
+  btn.disabled = true; btn.textContent = 'Publishing...';
+  const res  = await fetch(`/faculty/assignments/${id}/publish/`, {
+    method: 'POST', headers: { 'X-CSRFToken': getCsrf() }
+  });
+  const data = await res.json();
+  if (data.success) { location.reload(); }
+  else { btn.disabled=false; btn.textContent='Publish'; alert(data.error||'Failed.'); }
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────
+async function deleteAssessment(id) {
+  if (!confirm('Delete this assessment? All submissions will also be removed.')) return;
+  const res  = await fetch(`/faculty/assignments/${id}/delete/`, {
+    method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }
+  });
+  const data = await res.json();
+  if (data.success) document.getElementById(`asgn-${id}`).remove();
+}
+</script>
+{% endif %}
+{% endblock %}

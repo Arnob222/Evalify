@@ -60,14 +60,15 @@ class Assessment(models.Model):
     TYPE_CHOICES = [
         ('assignment', 'Assignment'),
         ('quiz', 'Quiz'),
-        ('exam', 'Exam'),
-        ('project', 'Project'),
+        ('mid', 'Mid Exam'),
+        ('ct', 'Class Test'),
+        ('final', 'Final Exam'),
     ]
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='assessments')
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     assessment_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    due_date = models.DateField()
+    due_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, default='published')
     total_marks = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -82,6 +83,7 @@ class Question(models.Model):
     text = models.TextField()
     max_marks = models.IntegerField(default=10)
     clos = models.ManyToManyField(CLO, blank=True)
+    plos = models.ManyToManyField(PLO, blank=True)
 
     def __str__(self):
         return f"Q{self.order} - {self.assessment.title}"
@@ -105,6 +107,7 @@ class Submission(models.Model):
     student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='submissions')
     assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='submissions')
     content = models.TextField(blank=True)
+    submitted_file = models.FileField(upload_to='submissions/', blank=True, null=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='submitted')
     total_score = models.FloatField(default=0)
@@ -123,6 +126,21 @@ class QuestionGrade(models.Model):
 
     class Meta:
         unique_together = ('submission', 'question')
+
+
+class StudyMaterial(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='materials')
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    file = models.FileField(upload_to='materials/')
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.title} ({self.course.code})"
+
+    def filename(self):
+        return self.file.name.split('/')[-1]
 
 
 class Announcement(models.Model):

@@ -1,0 +1,264 @@
+{% extends 'faculty/base.html' %}
+{% block nav_materials %}active{% endblock %}
+
+{% block content %}
+
+{% if not selected_course %}
+<!-- ═══════════════════════════════ COURSE LIST ═══════════════════════════════ -->
+<div class="page-title">Study Materials</div>
+<div class="page-sub">Select a course to upload and manage its study materials for students.</div>
+
+{% if courses %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:4px;">
+  {% for c in courses %}
+  <a href="?course={{ c.id }}" style="text-decoration:none;color:inherit;">
+    <div style="background:#fff;border:1px solid var(--border);border-radius:12px;
+                padding:18px 20px;display:flex;gap:14px;align-items:center;
+                transition:border-color .2s,box-shadow .2s;"
+         onmouseover="this.style.borderColor='var(--teal)';this.style.boxShadow='0 2px 12px rgba(32,178,170,.12)';"
+         onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='none';">
+      <div style="width:46px;height:46px;border-radius:10px;background:var(--teal-light);
+                  display:flex;align-items:center;justify-content:center;
+                  font-size:22px;flex-shrink:0;">📁</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:11px;font-weight:600;color:var(--teal);
+                    text-transform:uppercase;letter-spacing:.4px;">{{ c.code }}</div>
+        <div style="font-size:14px;font-weight:700;margin-top:1px;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.name }}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:2px;">
+          {{ c.material_count }} file{{ c.material_count|pluralize }}
+        </div>
+      </div>
+      <span style="color:var(--teal);font-size:18px;">›</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">
+  <div class="empty-icon">📁</div>
+  <div class="empty-title">No courses yet</div>
+  <div style="font-size:13px;">Create a course first from Courses &amp; CLOs.</div>
+</div>
+{% endif %}
+
+
+{% else %}
+<!-- ═══════════════════════════════ MATERIALS LIST ═══════════════════════════════ -->
+
+<!-- Breadcrumb -->
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:22px;font-size:13px;">
+  <a href="{% url 'faculty_materials' %}"
+     style="color:var(--gray);text-decoration:none;padding:5px 12px;border:1px solid var(--border);
+            border-radius:6px;background:#fff;"
+     onmouseover="this.style.color='var(--teal)';this.style.borderColor='var(--teal)';"
+     onmouseout="this.style.color='var(--gray)';this.style.borderColor='var(--border)';">
+    ← Back
+  </a>
+  <span style="color:var(--light);">/</span>
+  <span style="color:var(--gray);">Study Materials</span>
+  <span style="color:var(--light);">/</span>
+  <span style="font-weight:600;">{{ selected_course.code }}: {{ selected_course.name }}</span>
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
+  <div>
+    <div class="page-title">{{ selected_course.name }}</div>
+    <div class="page-sub" style="margin-bottom:0;">
+      {{ material_count }} material{{ material_count|pluralize }} uploaded
+    </div>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('uploadModal')">+ Upload Material</button>
+</div>
+
+{% if materials %}
+<div style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+  {% for m in materials %}
+  {% with ext=m.filename|lower %}
+  <div id="mat-{{ m.id }}"
+       style="display:flex;align-items:center;gap:14px;padding:14px 20px;
+              {% if not forloop.last %}border-bottom:1px solid #f3f4f6;{% endif %}">
+
+    <!-- File type badge -->
+    <div style="width:42px;height:42px;border-radius:8px;flex-shrink:0;
+                display:flex;flex-direction:column;align-items:center;justify-content:center;
+                background:{% if '.pdf' in ext %}#fef2f2{% elif '.doc' in ext %}#eff6ff{% elif '.ppt' in ext %}#fff7ed{% elif '.xls' in ext %}#f0fdf4{% elif '.zip' in ext or '.rar' in ext %}#f5f3ff{% elif '.jpg' in ext or '.jpeg' in ext or '.png' in ext %}#fdf4ff{% else %}#f8fafc{% endif %};">
+      <span style="font-size:18px;line-height:1;">
+        {% if '.pdf' in ext %}📄{% elif '.doc' in ext %}📝{% elif '.ppt' in ext %}📊{% elif '.xls' in ext %}📋{% elif '.zip' in ext or '.rar' in ext %}🗜️{% elif '.jpg' in ext or '.jpeg' in ext or '.png' in ext %}🖼️{% else %}📄{% endif %}
+      </span>
+      <span style="font-size:9px;font-weight:700;margin-top:1px;
+                   color:{% if '.pdf' in ext %}#dc2626{% elif '.doc' in ext %}#2563eb{% elif '.ppt' in ext %}#ea580c{% elif '.xls' in ext %}#16a34a{% elif '.zip' in ext or '.rar' in ext %}#7c3aed{% elif '.jpg' in ext or '.jpeg' in ext or '.png' in ext %}#db2777{% else %}var(--gray){% endif %};">
+        {% if '.pdf' in ext %}PDF{% elif '.docx' in ext %}DOCX{% elif '.doc' in ext %}DOC{% elif '.pptx' in ext %}PPTX{% elif '.ppt' in ext %}PPT{% elif '.xlsx' in ext %}XLSX{% elif '.xls' in ext %}XLS{% elif '.zip' in ext %}ZIP{% elif '.rar' in ext %}RAR{% elif '.png' in ext %}PNG{% elif '.jpg' in ext or '.jpeg' in ext %}JPG{% else %}FILE{% endif %}
+      </span>
+    </div>
+
+    <!-- Info -->
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+        {{ m.title }}
+      </div>
+      {% if m.description %}
+      <div style="font-size:12px;color:var(--gray);margin-top:2px;
+                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+        {{ m.description }}
+      </div>
+      {% endif %}
+      <div style="font-size:11px;color:var(--light);margin-top:3px;">
+        {{ m.filename }} &nbsp;·&nbsp; Uploaded {{ m.uploaded_at|date:"M d, Y" }}
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <a href="{{ m.file.url }}" target="_blank" class="btn btn-outline btn-sm">
+        ⬇ Download
+      </a>
+      <button class="btn btn-outline btn-sm"
+              style="color:var(--gray);border-color:var(--border);"
+              onmouseover="this.style.color='var(--red)';this.style.borderColor='#fca5a5';"
+              onmouseout="this.style.color='var(--gray)';this.style.borderColor='var(--border)';"
+              onclick="deleteMaterial({{ m.id }})">✕</button>
+    </div>
+  </div>
+  {% endwith %}
+  {% endfor %}
+</div>
+
+{% else %}
+<div style="background:#fff;border:1px dashed var(--border);border-radius:12px;
+            padding:48px 20px;text-align:center;">
+  <div style="font-size:40px;margin-bottom:10px;">📁</div>
+  <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">No materials yet</div>
+  <div style="font-size:13px;color:var(--gray);margin-bottom:18px;">
+    Upload PDFs, slides, notes, or any files for your students.
+  </div>
+  <button class="btn btn-primary" onclick="openModal('uploadModal')">+ Upload First Material</button>
+</div>
+{% endif %}
+
+
+<!-- Upload Modal -->
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Upload Study Material</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:2px;">
+          {{ selected_course.code }}: {{ selected_course.name }}
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModal('uploadModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="uploadForm" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="course_id" value="{{ selected_course.id }}">
+
+        <div class="form-group">
+          <label class="form-label">Title <span style="color:var(--red);">*</span></label>
+          <input class="form-control" name="title" id="matTitle"
+                 placeholder="e.g. Chapter 3 – Sorting Algorithms">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            Description
+            <span style="color:var(--gray);font-weight:400;">(optional)</span>
+          </label>
+          <textarea class="form-control" name="description" id="matDesc" rows="2"
+                    placeholder="Brief note about this file..." style="resize:vertical;"></textarea>
+        </div>
+
+        <!-- File drop zone -->
+        <div class="form-group">
+          <label class="form-label">File <span style="color:var(--red);">*</span></label>
+          <label for="matFile"
+                 style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                        border:2px dashed var(--border);border-radius:8px;padding:22px 16px;
+                        cursor:pointer;transition:border-color .2s;text-align:center;"
+                 onmouseover="this.style.borderColor='var(--teal)';"
+                 onmouseout="this.style.borderColor='var(--border)';"
+                 id="dropLabel">
+            <span style="font-size:28px;margin-bottom:6px;">📂</span>
+            <span style="font-size:13px;font-weight:500;color:var(--text);">
+              Click to choose a file
+            </span>
+            <span style="font-size:11px;color:var(--gray);margin-top:3px;" id="fileNameDisplay">
+              PDF, Word, PowerPoint, Excel, ZIP, images, code
+            </span>
+          </label>
+          <input type="file" name="file" id="matFile"
+                 accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip,.rar,.png,.jpg,.jpeg,.py,.java,.cpp,.c"
+                 style="display:none;" onchange="showFileName(this)">
+        </div>
+
+        <div id="uploadError" style="color:var(--red);font-size:13px;display:none;"></div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary btn-full" id="uploadBtn" onclick="doUpload()">
+        Upload Material
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+
+{% block scripts %}
+{% if selected_course %}
+<script>
+function showFileName(input) {
+  const name = input.files[0]?.name || 'PDF, Word, PowerPoint, Excel, ZIP, images, code';
+  document.getElementById('fileNameDisplay').textContent = name;
+  document.getElementById('dropLabel').style.borderColor = 'var(--teal)';
+  document.getElementById('dropLabel').style.background  = 'var(--teal-light)';
+}
+
+async function doUpload() {
+  const errEl = document.getElementById('uploadError');
+  const btn   = document.getElementById('uploadBtn');
+  const title = document.getElementById('matTitle').value.trim();
+  const file  = document.getElementById('matFile').files[0];
+  errEl.style.display = 'none';
+  if (!title) { errEl.textContent='Title is required.'; errEl.style.display='block'; return; }
+  if (!file)  { errEl.textContent='Please select a file.'; errEl.style.display='block'; return; }
+
+  btn.disabled = true; btn.textContent = 'Uploading...';
+  const formData = new FormData(document.getElementById('uploadForm'));
+  try {
+    const res  = await fetch("{% url 'upload_material' %}", {
+      method:'POST', headers:{'X-CSRFToken': getCsrf()}, body: formData,
+    });
+    const data = await res.json();
+    if (data.success) { location.reload(); }
+    else {
+      errEl.textContent = data.error || 'Upload failed.';
+      errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Upload Material';
+    }
+  } catch(e) {
+    errEl.textContent = 'Network error. Try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Upload Material';
+  }
+}
+
+async function deleteMaterial(id) {
+  if (!confirm('Remove this material? Students will no longer be able to access it.')) return;
+  const res  = await fetch(`/faculty/materials/${id}/delete/`, {
+    method:'DELETE', headers:{'X-CSRFToken': getCsrf()}
+  });
+  const data = await res.json();
+  if (data.success) {
+    const el = document.getElementById(`mat-${id}`);
+    el.style.opacity = '0';
+    el.style.transition = 'opacity .3s';
+    setTimeout(() => el.remove(), 300);
+  }
+}
+</script>
+{% endif %}
+{% endblock %}

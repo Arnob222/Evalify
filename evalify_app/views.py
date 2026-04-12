@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.db.models import Count
 import json
 from .models import (User, Course, CLO, PLO, Assessment, Question,
-                     Enrollment, Submission, QuestionGrade, Announcement)
+                     Enrollment, Submission, QuestionGrade, Announcement, StudyMaterial)
 
 
 #Home Redirect 
@@ -279,8 +279,11 @@ def get_submission_detail(request, sub_id):
         questions.append({
             'id': q.id, 'order': q.order, 'text': q.text,
             'max_marks': q.max_marks, 'obtained': obtained,
-            'clos': [{'code': c.code} for c in q.clos.all()]
+            'clos': [{'code': c.code} for c in q.clos.all()],
+            'plos': [{'code': p.code} for p in q.plos.all()],
         })
+    file_url = sub.submitted_file.url if sub.submitted_file else None
+    file_name = sub.submitted_file.name.split('/')[-1] if sub.submitted_file else None
     return JsonResponse({
         'id': sub.id,
         'student_name': sub.student.full_name or sub.student.username,
@@ -288,6 +291,8 @@ def get_submission_detail(request, sub_id):
         'assessment_type': sub.assessment.assessment_type,
         'total_marks': sub.assessment.total_marks,
         'content': sub.content,
+        'file_url': file_url,
+        'file_name': file_name,
         'plagiarism': sub.plagiarism_score,
         'ai_content': sub.ai_content_score,
         'status': sub.status,
@@ -565,6 +570,93 @@ def student_notifications(request):
 
 
 
+# ── Study Material Views ──────────────────────────────────────────────────────
+
+@faculty_required
+def faculty_materials(request):
+    courses = Course.objects.filter(faculty=request.user)
+    course_id = request.GET.get('course')
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+        materials = StudyMaterial.objects.filter(
+            course=selected_course
+        ).order_by('-uploaded_at')
+        return render(request, 'faculty/materials.html', {
+            'selected_course': selected_course,
+            'courses': courses,
+            'materials': materials,
+            'material_count': materials.count(),
+        })
+    for c in courses:
+        c.material_count = StudyMaterial.objects.filter(course=c).count()
+    return render(request, 'faculty/materials.html', {
+        'selected_course': None,
+        'courses': courses,
+    })
+
+
+@faculty_required
+def upload_material(request):
+    if request.method == 'POST':
+        course_id = request.POST.get('course_id')
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        uploaded_file = request.FILES.get('file')
+        course = get_object_or_404(Course, id=course_id, faculty=request.user)
+        if not title:
+            return JsonResponse({'error': 'Title is required.'}, status=400)
+        if not uploaded_file:
+            return JsonResponse({'error': 'Please select a file to upload.'}, status=400)
+        material = StudyMaterial.objects.create(
+            course=course, title=title, description=description,
+            file=uploaded_file, uploaded_by=request.user,
+        )
+        return JsonResponse({
+            'success': True,
+            'id': material.id,
+            'title': material.title,
+            'description': material.description,
+            'file_url': material.file.url,
+            'filename': material.filename(),
+            'uploaded_at': material.uploaded_at.strftime('%b %d, %Y'),
+        })
+    return JsonResponse({'error': 'POST required'}, status=400)
+
+
+@faculty_required
+def delete_material(request, material_id):
+    material = get_object_or_404(StudyMaterial, id=material_id, course__faculty=request.user)
+    material.file.delete(save=False)
+    material.delete()
+    return JsonResponse({'success': True})
+
+
+@student_required
+def student_materials(request):
+    enrollments = Enrollment.objects.filter(student=request.user)
+    courses = [e.course for e in enrollments]
+    course_id = request.GET.get('course')
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id)
+        if selected_course not in courses:
+            from django.shortcuts import redirect
+            return redirect('student_materials')
+        materials = StudyMaterial.objects.filter(
+            course=selected_course
+        ).order_by('-uploaded_at')
+        return render(request, 'student/materials.html', {
+            'selected_course': selected_course,
+            'materials': materials,
+            'material_count': materials.count(),
+        })
+    for c in courses:
+        c.material_count = StudyMaterial.objects.filter(course=c).count()
+    return render(request, 'student/materials.html', {
+        'selected_course': None,
+        'courses': courses,
+    })
+
+
 @faculty_required
 def add_plo(request):
     if request.method == 'POST':
@@ -579,4 +671,159 @@ def add_plo(request):
             created_by=request.user
         )
         return JsonResponse({'success': True, 'id': plo.id, 'code': plo.code})
+    return JsonResponse({'error': 'POST required'}, status=400)
+
+
+# ── Faculty Assignment Views ──────────────────────────────────────────────────
+
+@faculty_required
+def faculty_assignments(request):
+    courses = Course.objects.filter(faculty=request.user)
+    plos = PLO.objects.all()
+
+    course_id = request.GET.get('course')
+    if course_id:
+        # ── Course detail view ──────────────────────────────────────
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+        base_qs = Assessment.objects.filter(course=selected_course).select_related('course').prefetch_related(
+            'questions', 'questions__clos', 'questions__plos'
+        )
+        drafts = list(base_qs.filter(status='draft').order_by('-created_at'))
+        published_list = list(base_qs.filter(status='published').order_by('-created_at'))
+        for a in drafts + published_list:
+            a.submission_count = a.submissions.count()
+            a.question_count = a.questions.count()
+        return render(request, 'faculty/assignments.html', {
+            'selected_course': selected_course,
+            'courses': courses,
+            'drafts': drafts,
+            'published_list': published_list,
+            'plos': plos,
+            'draft_count': len(drafts),
+            'published_count': len(published_list),
+            'total_subs': sum(a.submission_count for a in published_list),
+        })
+
+    # ── Course list view ────────────────────────────────────────────
+    for c in courses:
+        c.total_count = Assessment.objects.filter(course=c).count()
+        c.draft_count = Assessment.objects.filter(course=c, status='draft').count()
+        c.published_count = Assessment.objects.filter(course=c, status='published').count()
+    return render(request, 'faculty/assignments.html', {
+        'selected_course': None,
+        'courses': courses,
+        'plos': plos,
+    })
+
+
+@faculty_required
+def create_assignment(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        course = get_object_or_404(Course, id=data['course_id'], faculty=request.user)
+        assessment_type = data.get('assessment_type', 'assignment')
+        # Assignments publish immediately; all other types save as draft
+        status = 'published' if assessment_type == 'assignment' else 'draft'
+        # due_date is optional for non-assignment types
+        due_date = data.get('due_date') or None
+        assignment = Assessment.objects.create(
+            course=course,
+            title=data['title'],
+            description=data.get('description', ''),
+            assessment_type=assessment_type,
+            due_date=due_date,
+            status=status,
+            total_marks=0,
+        )
+        total = 0
+        for i, q in enumerate(data.get('questions', []), 1):
+            question = Question.objects.create(
+                assessment=assignment,
+                order=i,
+                text=q['text'],
+                max_marks=int(q.get('max_marks', 10)),
+            )
+            if q.get('clo_ids'):
+                question.clos.set(CLO.objects.filter(id__in=q['clo_ids']))
+            if q.get('plo_ids'):
+                question.plos.set(PLO.objects.filter(id__in=q['plo_ids']))
+            total += int(q.get('max_marks', 10))
+        # Use manual total_marks if provided and no questions, else sum of questions
+        manual_total = int(data.get('total_marks', 0))
+        assignment.total_marks = total if total > 0 else manual_total
+        assignment.save()
+        type_labels = dict(Assessment.TYPE_CHOICES)
+        return JsonResponse({
+            'success': True,
+            'id': assignment.id,
+            'title': assignment.title,
+            'type_label': type_labels.get(assessment_type, assessment_type),
+            'assessment_type': assessment_type,
+            'status': status,
+            'course_name': f"{course.code}: {course.name}",
+            'due_date': str(assignment.due_date),
+            'total_marks': assignment.total_marks,
+            'description': assignment.description,
+            'question_count': len(data.get('questions', [])),
+        })
+    return JsonResponse({'error': 'POST required'}, status=400)
+
+
+@faculty_required
+def delete_assignment(request, assignment_id):
+    assignment = get_object_or_404(
+        Assessment, id=assignment_id, course__faculty=request.user
+    )
+    assignment.delete()
+    return JsonResponse({'success': True})
+
+
+@faculty_required
+def publish_assessment(request, assignment_id):
+    assessment = get_object_or_404(
+        Assessment, id=assignment_id, course__faculty=request.user
+    )
+    assessment.status = 'published'
+    assessment.save()
+    return JsonResponse({'success': True})
+
+
+# ── Student Assignment Views ──────────────────────────────────────────────────
+
+@student_required
+def student_assignments(request):
+    enrollments = Enrollment.objects.filter(student=request.user)
+    courses = [e.course for e in enrollments]
+    assessments = Assessment.objects.filter(
+        course__in=courses, status='published'
+    ).select_related('course').prefetch_related('questions__clos', 'questions__plos').order_by('-created_at')
+    submissions = {
+        s.assessment_id: s
+        for s in Submission.objects.filter(student=request.user, assessment__in=assessments)
+    }
+    assignments_with_status = [(a, submissions.get(a.id)) for a in assessments]
+    return render(request, 'student/assignments.html', {
+        'assignments_with_status': assignments_with_status,
+    })
+
+
+@student_required
+def submit_assignment(request, assignment_id):
+    assignment = get_object_or_404(Assessment, id=assignment_id, status='published')
+    if not Enrollment.objects.filter(student=request.user, course=assignment.course).exists():
+        return JsonResponse({'error': 'You are not enrolled in this course.'}, status=403)
+    if Submission.objects.filter(student=request.user, assessment=assignment).exists():
+        return JsonResponse({'error': 'You have already submitted this assignment.'}, status=400)
+    if request.method == 'POST':
+        content = request.POST.get('content', '').strip()
+        uploaded_file = request.FILES.get('submitted_file')
+        if not content and not uploaded_file:
+            return JsonResponse({'error': 'Please provide an answer or upload a file.'}, status=400)
+        Submission.objects.create(
+            student=request.user,
+            assessment=assignment,
+            content=content,
+            submitted_file=uploaded_file,
+        )
+        return JsonResponse({'success': True})
     return JsonResponse({'error': 'POST required'}, status=400)

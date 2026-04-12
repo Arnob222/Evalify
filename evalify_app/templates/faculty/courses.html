@@ -61,7 +61,7 @@
                 <span class="tag tag-plo">{{ plo.code }}</span>
                 {% endfor %}
               </div>
-              <div style="font-size:13px;color:#374151;">{{ clo.description }}</div>
+              <div style="font-size:13px;color:#374151;white-space:pre-wrap;">{{ clo.description }}</div>
             </div>
             <button onclick="deleteClo({{ clo.id }}, this)"
               style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;flex-shrink:0;margin-left:10px;">
@@ -184,7 +184,9 @@
       <input type="hidden" id="cloCourseId">
       <div class="form-group">
         <label class="form-label">CLO Description *</label>
-        <input type="text" id="cloDesc" class="form-control" placeholder="e.g. Description.....">
+        <textarea id="cloDesc" class="form-control" rows="4"
+                  placeholder="e.g. Description..."
+                  style="resize:vertical;"></textarea>
       </div>
       <div class="form-group">
         <label class="form-label">Bloom's Taxonomy Level</label>

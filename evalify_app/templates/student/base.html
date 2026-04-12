@@ -119,6 +119,12 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
     <a href="{% url 'student_clo_results' %}" class="{% block nav_results %}{% endblock %}">
       <span class="nav-icon"></span> CLO/PLO Results
     </a>
+    <a href="{% url 'student_assignments' %}" class="{% block nav_assignments %}{% endblock %}">
+      <span class="nav-icon"></span> Assignments
+    </a>
+    <a href="{% url 'student_materials' %}" class="{% block nav_materials %}{% endblock %}">
+      <span class="nav-icon"></span> Study Materials
+    </a>
     <a href="{% url 'student_notifications' %}" class="{% block nav_notifications %}{% endblock %}">
       <span class="nav-icon"></span> Notifications
     </a>

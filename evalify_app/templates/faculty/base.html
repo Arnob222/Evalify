@@ -209,7 +209,7 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
     <a href="{% url 'faculty_courses' %}" class="{% block nav_courses %}{% endblock %}">
       <span class="nav-icon"></span> Courses &amp; CLOs
     </a>
-    <a href="{% url 'faculty_assessments' %}" class="{% block nav_assessments %}{% endblock %}">
+    <a href="{% url 'faculty_assignments' %}" class="{% block nav_assignments %}{% endblock %}">
       <span class="nav-icon"></span> Assessments
     </a>
     <a href="{% url 'faculty_grading' %}" class="{% block nav_grading %}{% endblock %}">
@@ -217,6 +217,9 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
     </a>
     <a href="{% url 'faculty_analytics' %}" class="{% block nav_analytics %}{% endblock %}">
       <span class="nav-icon"></span> Analytics
+    </a>
+    <a href="{% url 'faculty_materials' %}" class="{% block nav_materials %}{% endblock %}">
+      <span class="nav-icon"></span> Study Materials
     </a>
     <a href="{% url 'faculty_announcements' %}" class="{% block nav_announcements %}{% endblock %}">
       <span class="nav-icon"></span> Announcements
