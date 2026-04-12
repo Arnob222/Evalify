@@ -1,84 +1,16 @@
-# evalify_app/tests_selenium.py
+
+import time
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-import time
 
-class SeleniumTests(StaticLiveServerTestCase):
-    """Test suite using Selenium to verify frontend pages."""
 
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        service = Service(ChromeDriverManager().install())
-        cls.driver = webdriver.Chrome(service=service)
-        cls.driver.implicitly_wait(10)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.driver.quit()
-        super().tearDownClass()
-
-    def test_home_page_loads(self):
-        """Verify home page loads with correct title."""
-        self.driver.get(self.live_server_url + '/')
-        self.assertIn('Evalify - Smart Assessment Platform', self.driver.title)
-
-    def test_signup_page_loads(self):
-        """Verify signup page loads correctly."""
-        self.driver.get(self.live_server_url + '/signup/')
-        self.assertEqual(self.driver.title, 'Evalify - Create Account')
-        # Check presence of key elements
-        self.assertTrue(self.driver.find_element(By.CSS_SELECTOR, 'input[placeholder*="profile name"]').is_displayed())
-        self.assertTrue(self.driver.find_element(By.CSS_SELECTOR, 'input[placeholder*="email"]').is_displayed())
-
-    def test_signin_page_loads(self):
-        """Verify signin page loads correctly."""
-        self.driver.get(self.live_server_url + '/signin/')
-        self.assertEqual(self.driver.title, 'Evalify - Sign In')
-        # Check heading
-        heading = self.driver.find_element(By.TAG_NAME, 'h2')
-        self.assertIn('Sign In To Continue', heading.text)
-
-    def test_navigation_from_home(self):
-        """Test that buttons on home page lead to correct auth pages."""
-        self.driver.get(self.live_server_url + '/')
-
-        # Click SIGN UP button (button with class 'btn-signup')
-        signup_btn = self.driver.find_element(By.CSS_SELECTOR, '.btn-signup')
-        signup_btn.click()
-        self.assertIn('/signup/', self.driver.current_url)
-        self.assertEqual(self.driver.title, 'Evalify - Create Account')
-
-        # Go back to home
-        self.driver.back()
-
-        # Click SIGN IN button (button with class 'btn-signin')
-        signin_btn = self.driver.find_element(By.CSS_SELECTOR, '.btn-signin')
-        signin_btn.click()
-        self.assertIn('/signin/', self.driver.current_url)
-        self.assertEqual(self.driver.title, 'Evalify - Sign In')
-
-    def test_navigation_between_auth_pages(self):
-        """Test links between signup and signin pages work."""
-        # From signup page, go to signin
-        self.driver.get(self.live_server_url + '/signup/')
-        login_link = self.driver.find_element(By.CSS_SELECTOR, '.login-link a')
-        login_link.click()
-        self.assertIn('/signin/', self.driver.current_url)
-
-        # From signin page, go back to signup
-        signup_link = self.driver.find_element(By.CSS_SELECTOR, '.login-link a')
-        signup_link.click()
-        self.assertIn('/signup/', self.driver.current_url)
-        
-    class FacultyCourseManagementTests(StaticLiveServerTestCase):
-    """Selenium tests for faculty course management (add course, CLO, PLO, student)"""
+class EvalifyFullSeleniumTests(StaticLiveServerTestCase):
+    """Complete Selenium test suite for all Evalify pages."""
 
     @classmethod
     def setUpClass(cls):
@@ -93,194 +25,367 @@ class SeleniumTests(StaticLiveServerTestCase):
         cls.driver.quit()
         super().tearDownClass()
 
-    def login_as_faculty(self):
-        """Helper method to log in as a faculty user before each test."""
-        # You need to implement actual login flow based on your auth system
-        # For now, assuming a test faculty user exists and using a simple login page.
-        # Adjust selectors to match your login page.
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        # Clean up previous test users
+        User.objects.filter(email='faculty@test.com').delete()
+        User.objects.filter(email='student@test.com').delete()
+        # Create faculty
+        self.faculty_user = User.objects.create_user(
+            username='faculty@test.com',
+            email='faculty@test.com',
+            password='FacultyPass123',
+            full_name='Test Faculty',
+            role='faculty'
+        )
+        # Create student
+        self.student_user = User.objects.create_user(
+            username='student@test.com',
+            email='student@test.com',
+            password='StudentPass123',
+            full_name='Test Student',
+            role='student'
+        )
+        # Create a course for faculty (for announcements, CLOs, etc.)
+        try:
+            from evalify_app.models import Course
+            self.course, _ = Course.objects.get_or_create(
+                code='CS-TEST101',
+                defaults={
+                    'name': 'Selenium Test Course',
+                    'description': 'Course for testing',
+                    'credit_hours': 3,
+                    'semester': 'Fall 2025',
+                    'faculty': self.faculty_user
+                }
+            )
+        except ImportError:
+            self.course = None
+
+  
+    def _login_as_faculty(self):
         self.driver.get(self.live_server_url + '/signin/')
-        self.driver.find_element(By.NAME, 'email').send_keys('faculty@example.com')
-        self.driver.find_element(By.NAME, 'password').send_keys('testpass123')
+        self.driver.find_element(By.NAME, 'email').send_keys('faculty@test.com')
+        self.driver.find_element(By.NAME, 'password').send_keys('FacultyPass123')
         self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').click()
-        # Wait for redirect to faculty dashboard
         WebDriverWait(self.driver, 5).until(
-            EC.url_contains('/faculty/')
+            EC.url_contains('/faculty/dashboard/')
         )
 
-    def test_add_course(self):
-        """Test adding a new course via modal."""
-        # First, login and go to courses page
-        self.login_as_faculty()
+    def _login_as_student(self):
+        self.driver.get(self.live_server_url + '/signin/')
+        self.driver.find_element(By.NAME, 'email').send_keys('student@test.com')
+        self.driver.find_element(By.NAME, 'password').send_keys('StudentPass123')
+        self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').click()
+        WebDriverWait(self.driver, 5).until(
+            EC.url_contains('/student/dashboard/')
+        )
+        # Additional wait to ensure dashboard content loads
+        time.sleep(1)
+
+    # HOMEPAGE TESTS
+    def test_homepage_loads(self):
+        self.driver.get(self.live_server_url + '/')
+        self.assertIn('Evalify - Smart Assessment Platform', self.driver.title)
+        self.assertTrue(self.driver.find_element(By.CSS_SELECTOR, '.badge').is_displayed())
+        self.assertTrue(self.driver.find_element(By.ID, 'facultyCard').is_displayed())
+        self.assertTrue(self.driver.find_element(By.ID, 'studentCard').is_displayed())
+
+    def test_homepage_navigation_buttons(self):
+        self.driver.get(self.live_server_url + '/')
+        self.driver.find_element(By.CSS_SELECTOR, '.btn-signup').click()
+        self.assertIn('/signup/', self.driver.current_url)
+        self.driver.back()
+        self.driver.find_element(By.CSS_SELECTOR, '.btn-signin').click()
+        self.assertIn('/signin/', self.driver.current_url)
+
+    def test_homepage_features_grid(self):
+        self.driver.get(self.live_server_url + '/')
+        features = self.driver.find_elements(By.CSS_SELECTOR, '.feature-item')
+        self.assertEqual(len(features), 4)
+        for feature in features:
+            self.assertTrue(feature.find_element(By.TAG_NAME, 'h3').is_displayed())
+            self.assertTrue(feature.find_element(By.TAG_NAME, 'p').is_displayed())
+
+    #  SIGN IN TESTS 
+    def test_signin_page_elements(self):
+        self.driver.get(self.live_server_url + '/signin/')
+        self.assertEqual(self.driver.title, 'Evalify - Sign In')
+        self.assertTrue(self.driver.find_element(By.NAME, 'email').is_displayed())
+        self.assertTrue(self.driver.find_element(By.NAME, 'password').is_displayed())
+        self.assertTrue(self.driver.find_element(By.NAME, 'remember').is_displayed())
+        self.assertTrue(self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').is_displayed())
+        self.assertTrue(self.driver.find_element(By.LINK_TEXT, 'Sign up').is_displayed())
+
+    def test_signin_password_toggle(self):
+        self.driver.get(self.live_server_url + '/signin/')
+        pwd = self.driver.find_element(By.ID, 'passwordField')
+        toggle = self.driver.find_element(By.ID, 'togglePass')
+        self.assertEqual(pwd.get_attribute('type'), 'password')
+        toggle.click()
+        self.assertEqual(pwd.get_attribute('type'), 'text')
+        toggle.click()
+        self.assertEqual(pwd.get_attribute('type'), 'password')
+
+    def test_signin_success_faculty(self):
+        self.driver.get(self.live_server_url + '/signin/')
+        self.driver.find_element(By.NAME, 'email').send_keys('faculty@test.com')
+        self.driver.find_element(By.NAME, 'password').send_keys('FacultyPass123')
+        self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').click()
+        WebDriverWait(self.driver, 5).until(EC.url_contains('/faculty/dashboard/'))
+        self.assertIn('/faculty/dashboard/', self.driver.current_url)
+
+    def test_signin_success_student(self):
+        self.driver.get(self.live_server_url + '/signin/')
+        self.driver.find_element(By.NAME, 'email').send_keys('student@test.com')
+        self.driver.find_element(By.NAME, 'password').send_keys('StudentPass123')
+        self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').click()
+        WebDriverWait(self.driver, 5).until(EC.url_contains('/student/dashboard/'))
+        self.assertIn('/student/dashboard/', self.driver.current_url)
+
+    def test_signin_failure_shows_error(self):
+        self.driver.get(self.live_server_url + '/signin/')
+        self.driver.find_element(By.NAME, 'email').send_keys('wrong@test.com')
+        self.driver.find_element(By.NAME, 'password').send_keys('wrongpass')
+        self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').click()
+        error_div = WebDriverWait(self.driver, 5).until(
+            EC.visibility_of_element_located((By.XPATH, "//div[contains(@style,'background:rgba(255,80,80')]"))
+        )
+        self.assertTrue(error_div.is_displayed())
+        self.assertIn('/signin/', self.driver.current_url)
+
+    def test_signin_link_to_signup(self):
+        self.driver.get(self.live_server_url + '/signin/')
+        signup_link = self.driver.find_element(By.CSS_SELECTOR, '.login-link a')
+        signup_link.click()
+        WebDriverWait(self.driver, 5).until(EC.url_contains('/signup/'))
+        self.assertIn('/signup/', self.driver.current_url)
+
+    #  SIGN UP TESTS 
+    def test_signup_page_elements(self):
+        self.driver.get(self.live_server_url + '/signup/')
+        self.assertEqual(self.driver.title, 'Evalify - Create Account')
+        self.assertTrue(self.driver.find_element(By.NAME, 'full_name').is_displayed())
+        self.assertTrue(self.driver.find_element(By.NAME, 'email').is_displayed())
+        self.assertTrue(self.driver.find_element(By.NAME, 'password').is_displayed())
+        self.assertTrue(self.driver.find_element(By.XPATH, "//input[@value='student']").is_displayed())
+        self.assertTrue(self.driver.find_element(By.XPATH, "//input[@value='faculty']").is_displayed())
+        self.assertTrue(self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').is_displayed())
+
+    def test_signup_password_toggle(self):
+        self.driver.get(self.live_server_url + '/signup/')
+        pwd = self.driver.find_element(By.ID, 'passwordField')
+        toggle = self.driver.find_element(By.ID, 'togglePass')
+        self.assertEqual(pwd.get_attribute('type'), 'password')
+        toggle.click()
+        self.assertEqual(pwd.get_attribute('type'), 'text')
+
+    def test_signup_success_student(self):
+        self.driver.get(self.live_server_url + '/signup/')
+        self.driver.find_element(By.NAME, 'full_name').send_keys('New Student')
+        self.driver.find_element(By.NAME, 'email').send_keys('newstudent@test.com')
+        self.driver.find_element(By.NAME, 'password').send_keys('StrongPass123')
+        self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').click()
+        WebDriverWait(self.driver, 5).until(
+            lambda d: '/signin/' in d.current_url or '/student/dashboard/' in d.current_url
+        )
+        if '/signin/' in self.driver.current_url:
+            self.driver.find_element(By.NAME, 'email').send_keys('newstudent@test.com')
+            self.driver.find_element(By.NAME, 'password').send_keys('StrongPass123')
+            self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').click()
+            WebDriverWait(self.driver, 5).until(EC.url_contains('/student/dashboard/'))
+        self.assertIn('/student/dashboard/', self.driver.current_url)
+
+    def test_signup_duplicate_email_error(self):
+        from django.contrib.auth import get_user_model
+        get_user_model().objects.create_user(
+            username='duplicate@test.com', email='duplicate@test.com',
+            password='pass', full_name='Dupe', role='student'
+        )
+        self.driver.get(self.live_server_url + '/signup/')
+        self.driver.find_element(By.NAME, 'full_name').send_keys('Duplicate User')
+        self.driver.find_element(By.NAME, 'email').send_keys('duplicate@test.com')
+        self.driver.find_element(By.NAME, 'password').send_keys('SomePass123')
+        self.driver.find_element(By.CSS_SELECTOR, '.submit-btn').click()
+        error_div = WebDriverWait(self.driver, 5).until(
+            EC.visibility_of_element_located((By.XPATH, "//div[contains(@style,'background:rgba(255,80,80')]"))
+        )
+        self.assertTrue(error_div.is_displayed())
+
+    def test_signup_link_to_signin(self):
+        self.driver.get(self.live_server_url + '/signup/')
+        signin_link = self.driver.find_element(By.CSS_SELECTOR, '.login-link a')
+        signin_link.click()
+        WebDriverWait(self.driver, 5).until(EC.url_contains('/signin/'))
+        self.assertIn('/signin/', self.driver.current_url)
+
+    # FACULTY DASHBOARD TESTS
+    def test_faculty_dashboard_loads(self):
+        self._login_as_faculty()
+        self.driver.get(self.live_server_url + '/faculty/dashboard/')
+        self.assertIn('Faculty Dashboard', self.driver.page_source)
+        stats = self.driver.find_elements(By.CSS_SELECTOR, '.stat')
+        self.assertEqual(len(stats), 4)
+        courses_val = self.driver.find_element(By.XPATH, "//div[contains(@class,'stat blue')]//div[@class='stat-val']")
+        self.assertEqual(int(courses_val.text), 1)
+
+    def test_faculty_dashboard_panels(self):
+        self._login_as_faculty()
+        self.driver.get(self.live_server_url + '/faculty/dashboard/')
+        panel1 = self.driver.find_element(By.XPATH, "//div[contains(@class,'panel-title') and text()='Recent Submissions']")
+        panel2 = self.driver.find_element(By.XPATH, "//div[contains(@class,'panel-title') and text()='Announcements']")
+        self.assertTrue(panel1.is_displayed())
+        self.assertTrue(panel2.is_displayed())
+        self.assertTrue(self.driver.find_element(By.LINK_TEXT, 'View All').is_displayed())
+        self.assertTrue(self.driver.find_element(By.LINK_TEXT, 'Manage').is_displayed())
+
+    # FACULTY ANNOUNCEMENTS TESTS 
+    def test_announcements_page_loads(self):
+        self._login_as_faculty()
+        self.driver.get(self.live_server_url + '/faculty/announcements/')
+        self.assertIn('Announcements', self.driver.page_source)
+        self.assertTrue(self.driver.find_element(By.XPATH, "//button[contains(text(),'+ New Announcement')]").is_displayed())
+
+    def test_create_announcement_success(self):
+        self._login_as_faculty()
+        self.driver.get(self.live_server_url + '/faculty/announcements/')
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'+ New Announcement')]").click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'newAnnModal')))
+        Select(self.driver.find_element(By.ID, 'annCourse')).select_by_value(str(self.course.id))
+        self.driver.find_element(By.ID, 'annTitle').send_keys('Selenium Test Announcement')
+        self.driver.find_element(By.ID, 'annContent').send_keys('This is a test announcement content.')
+        Select(self.driver.find_element(By.ID, 'annPriority')).select_by_value('high')
+        self.driver.find_element(By.CSS_SELECTOR, '#newAnnModal .btn-full').click()
+        WebDriverWait(self.driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'Selenium Test Announcement')]"))
+        )
+        self.assertIn('Selenium Test Announcement', self.driver.page_source)
+
+    def test_create_announcement_validation(self):
+        self._login_as_faculty()
+        self.driver.get(self.live_server_url + '/faculty/announcements/')
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'+ New Announcement')]").click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'newAnnModal')))
+        self.driver.find_element(By.CSS_SELECTOR, '#newAnnModal .btn-full').click()
+        error = WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'annError')))
+        self.assertIn('Course, title and content are all required', error.text)
+
+    def test_delete_announcement(self):
+        self._login_as_faculty()
+        self.driver.get(self.live_server_url + '/faculty/announcements/')
+        # Create announcement
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'+ New Announcement')]").click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'newAnnModal')))
+        Select(self.driver.find_element(By.ID, 'annCourse')).select_by_value(str(self.course.id))
+        self.driver.find_element(By.ID, 'annTitle').send_keys('To Be Deleted')
+        self.driver.find_element(By.ID, 'annContent').send_keys('Delete me')
+        self.driver.find_element(By.CSS_SELECTOR, '#newAnnModal .btn-full').click()
+        WebDriverWait(self.driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'To Be Deleted')]"))
+        )
+        # Delete it
+        delete_btn = self.driver.find_element(By.XPATH, "//div[contains(text(),'To Be Deleted')]/ancestor::div[contains(@class,'list-item')]//button[contains(.,'Delete')]")
+        delete_btn.click()
+        self.driver.switch_to.alert.accept()
+        WebDriverWait(self.driver, 5).until(
+            EC.invisibility_of_element_located((By.XPATH, "//div[contains(text(),'To Be Deleted')]"))
+        )
+        self.assertNotIn('To Be Deleted', self.driver.page_source)
+
+    # ========================= FACULTY COURSES TESTS =========================
+    def test_courses_page_loads(self):
+        self._login_as_faculty()
         self.driver.get(self.live_server_url + '/faculty/courses/')
-
-        # Click "Add Course" button
-        add_btn = WebDriverWait(self.driver, 5).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.btn-primary:contains("Add Course")'))
+        # Wait for the page title element and check its visible text
+        page_title = WebDriverWait(self.driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, '.page-title'))
         )
-        # Since :contains is not native, use XPath
-        add_btn = self.driver.find_element(By.XPATH, "//button[contains(text(),'Add Course')]")
-        add_btn.click()
+        self.assertIn('Course & CLO/PLO Management', page_title.text)
+        self.assertTrue(self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add Course')]").is_displayed())
+        self.assertIn('CS-TEST101', self.driver.page_source)
 
-        # Wait for modal to appear
-        modal = WebDriverWait(self.driver, 5).until(
-            EC.visibility_of_element_located((By.ID, 'addCourseModal'))
-        )
-        # Fill in course details
-        self.driver.find_element(By.ID, 'cCode').send_keys('CSE-999')
-        self.driver.find_element(By.ID, 'cName').send_keys('Selenium Test Course')
-        self.driver.find_element(By.ID, 'cDesc').send_keys('Course created by Selenium test')
-        self.driver.find_element(By.ID, 'cSemester').send_keys('Fall 2025')
-        self.driver.find_element(By.ID, 'cCredits').clear()
-        self.driver.find_element(By.ID, 'cCredits').send_keys('4')
-
-        # Submit form
+    def test_add_course_success(self):
+        self._login_as_faculty()
+        self.driver.get(self.live_server_url + '/faculty/courses/')
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add Course')]").click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'addCourseModal')))
+        self.driver.find_element(By.ID, 'cCode').send_keys('CS-NEW101')
+        self.driver.find_element(By.ID, 'cName').send_keys('New Selenium Course')
+        self.driver.find_element(By.ID, 'cDesc').send_keys('Description')
+        self.driver.find_element(By.ID, 'cSemester').send_keys('Spring 2025')
+        credits = self.driver.find_element(By.ID, 'cCredits')
+        credits.clear()
+        credits.send_keys('4')
         self.driver.find_element(By.CSS_SELECTOR, '#addCourseModal .btn-full').click()
-
-        # After submission, page should reload and show success message or new course
         WebDriverWait(self.driver, 5).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'Course created')]"))
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'CS-NEW101: New Selenium Course')]"))
         )
-        # Verify new course appears in list
-        course_elem = self.driver.find_element(By.XPATH, "//div[contains(text(),'CSE-999: Selenium Test Course')]")
-        self.assertTrue(course_elem.is_displayed())
+        self.assertIn('CS-NEW101', self.driver.page_source)
 
-    def test_add_plo(self):
-        """Test adding a PLO from the CLO modal."""
-        self.login_as_faculty()
+    def test_add_clo_and_quick_plo(self):
+        self._login_as_faculty()
         self.driver.get(self.live_server_url + '/faculty/courses/')
-
-        # Ensure at least one course exists; if not, create one first.
-        # For simplicity, assume there is a course. Then expand the first accordion.
-        first_accordion = WebDriverWait(self.driver, 5).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, '.accordion-trigger'))
-        )
-        first_accordion.click()
+        trigger = self.driver.find_element(By.CSS_SELECTOR, '.accordion-trigger')
+        trigger.click()
         time.sleep(0.5)
-
-        # Click "Add CLO" button (inside the CLO tab, but tab may be active)
-        add_clo_btn = self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add CLO')]")
-        add_clo_btn.click()
-
-        # Wait for add CLO modal
-        modal = WebDriverWait(self.driver, 5).until(
-            EC.visibility_of_element_located((By.ID, 'addCloModal'))
-        )
-
-        # Scroll to quick PLO section and add a new PLO
-        quick_desc = self.driver.find_element(By.ID, 'quickPloDesc')
-        quick_desc.send_keys('Test PLO from Selenium')
-        add_plo_btn = self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add PLO')]")
-        add_plo_btn.click()
-
-        # Wait for success message
-        success_msg = WebDriverWait(self.driver, 5).until(
-            EC.visibility_of_element_located((By.ID, 'ploAddedMsg'))
-        )
-        self.assertEqual(success_msg.text, '✓ PLO added!')
-
-        # Now fill CLO description and submit
-        self.driver.find_element(By.ID, 'cloDesc').send_keys('Test CLO from Selenium')
-        submit_btn = self.driver.find_element(By.CSS_SELECTOR, '#addCloModal .btn-full')
-        submit_btn.click()
-
-        # After submit, page should reload and show new CLO
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add CLO')]").click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'addCloModal')))
+        self.driver.find_element(By.ID, 'quickPloDesc').send_keys('Quick PLO from Selenium')
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add PLO')]").click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'ploAddedMsg')))
+        self.driver.find_element(By.ID, 'cloDesc').send_keys('Test CLO Description')
+        Select(self.driver.find_element(By.ID, 'cloBloom')).select_by_visible_text('Apply (L3)')
+        self.driver.find_element(By.CSS_SELECTOR, '#addCloModal .btn-full').click()
         WebDriverWait(self.driver, 5).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'Test CLO from Selenium')]"))
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'Test CLO Description')]"))
         )
-        # Also verify the new PLO appears in the PLO list (via tag)
-        plo_tag = self.driver.find_element(By.XPATH, "//span[contains(text(),'PLO') and contains(text(),'Test PLO')]")
-        self.assertTrue(plo_tag.is_displayed())
+        self.assertIn('Test CLO Description', self.driver.page_source)
 
     def test_add_student_to_course(self):
-        """Test adding a student to a course."""
-        self.login_as_faculty()
+        self._login_as_faculty()
         self.driver.get(self.live_server_url + '/faculty/courses/')
-
-        # Expand first course accordion
-        first_accordion = WebDriverWait(self.driver, 5).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, '.accordion-trigger'))
-        )
-        first_accordion.click()
-        time.sleep(0.5)
-
-        # Click on "Students" tab
-        students_tab = self.driver.find_element(By.CSS_SELECTOR, '.tab-btn[data-tab^="students_"]')
-        students_tab.click()
-        time.sleep(0.5)
-
-        # Click "+ Add Student" button
-        add_student_btn = WebDriverWait(self.driver, 5).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'+ Add Student')]"))
-        )
-        add_student_btn.click()
-
-        # Wait for modal
-        modal = WebDriverWait(self.driver, 5).until(
-            EC.visibility_of_element_located((By.ID, 'addStudentModal'))
-        )
-        # Fill email (assume a test student exists with this email)
-        self.driver.find_element(By.ID, 'studentEmail').send_keys('student@example.com')
-        submit = self.driver.find_element(By.CSS_SELECTOR, '#addStudentModal .btn-full')
-        submit.click()
-
-        # Wait for success message in modal
-        msg = WebDriverWait(self.driver, 5).until(
-            EC.visibility_of_element_located((By.ID, 'studentMsg'))
-        )
-        self.assertIn('added successfully', msg.text)
-        # After auto-reload, the student should appear in the list
-        time.sleep(2)  # Wait for reload
-        student_name = self.driver.find_element(By.XPATH, "//div[contains(text(),'student@example.com')]")
-        self.assertTrue(student_name.is_displayed())
-
-    def test_tab_switching(self):
-        """Test that tabs (CLOs, PLOs, Students) switch content correctly."""
-        self.login_as_faculty()
-        self.driver.get(self.live_server_url + '/faculty/courses/')
-
-        # Expand first accordion
-        first_accordion = self.driver.find_element(By.CSS_SELECTOR, '.accordion-trigger')
-        first_accordion.click()
-        time.sleep(0.5)
-
-        # Get all tab buttons
-        tabs = self.driver.find_elements(By.CSS_SELECTOR, '.tab-bar .tab-btn')
-        self.assertGreaterEqual(len(tabs), 3)
-
-        # Tab 0: CLOs - should be active by default
-        self.assertTrue('active' in tabs[0].get_attribute('class'))
-        clo_content = self.driver.find_element(By.CSS_SELECTOR, '.tab-content.active')
-        self.assertIsNotNone(clo_content)
-
-        # Click PLO tab
-        tabs[1].click()
-        time.sleep(0.5)
-        self.assertTrue('active' in tabs[1].get_attribute('class'))
-        plo_content = self.driver.find_element(By.CSS_SELECTOR, '.tab-content.active')
-        self.assertNotEqual(clo_content, plo_content)
-
-        # Click Students tab
-        tabs[2].click()
-        time.sleep(0.5)
-        self.assertTrue('active' in tabs[2].get_attribute('class'))
-        students_content = self.driver.find_element(By.CSS_SELECTOR, '.tab-content.active')
-        self.assertNotEqual(plo_content, students_content)
-
-    def test_accordion_expand_collapse(self):
-        """Test that accordion items expand/collapse when clicked."""
-        self.login_as_faculty()
-        self.driver.get(self.live_server_url + '/faculty/courses/')
-
-        # Find first accordion trigger
         trigger = self.driver.find_element(By.CSS_SELECTOR, '.accordion-trigger')
-        body = self.driver.find_element(By.CSS_SELECTOR, '.accordion-body')
-        # Initially, body should be hidden (display: none)
-        self.assertFalse(body.is_displayed())
-
         trigger.click()
         time.sleep(0.5)
-        self.assertTrue(body.is_displayed())
-
-        trigger.click()
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'Students')]").click()
         time.sleep(0.5)
-        self.assertFalse(body.is_displayed())
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add Student')]").click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'addStudentModal')))
+        self.driver.find_element(By.ID, 'studentEmail').send_keys('student@test.com')
+        self.driver.find_element(By.CSS_SELECTOR, '#addStudentModal .btn-full').click()
+        msg = WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'studentMsg')))
+        self.assertIn('added successfully', msg.text)
+        WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'student@test.com')]"))
+        )
+        self.assertIn('Test Student', self.driver.page_source)
+
+    # STUDENT DASHBOARD TESTS 
+
+
+
+    # SIDEBAR NAVIGATION TESTS
+    def test_faculty_sidebar_navigation(self):
+        self._login_as_faculty()
+        self.driver.get(self.live_server_url + '/faculty/dashboard/')
+        self.driver.find_element(By.LINK_TEXT, 'Courses & CLOs').click()
+        WebDriverWait(self.driver, 5).until(EC.url_contains('/faculty/courses/'))
+        self.driver.find_element(By.LINK_TEXT, 'Announcements').click()
+        WebDriverWait(self.driver, 5).until(EC.url_contains('/faculty/announcements/'))
+        self.driver.find_element(By.LINK_TEXT, 'Assessments').click()
+        WebDriverWait(self.driver, 5).until(EC.url_contains('/faculty/assessments/'))
+
+  
+
+    def test_sign_out(self):
+        self._login_as_faculty()
+        # The "Sign Out" link contains an arrow symbol, so use partial link text
+        sign_out_link = WebDriverWait(self.driver, 5).until(
+            EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, 'Sign Out'))
+        )
+        sign_out_link.click()
+        WebDriverWait(self.driver, 5).until(
+            lambda d: '/signin/' in d.current_url or '/' in d.current_url
+        )
+        self.assertNotIn('/faculty/', self.driver.current_url)
