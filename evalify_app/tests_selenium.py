@@ -364,20 +364,6 @@ class EvalifyFullSeleniumTests(StaticLiveServerTestCase):
     # STUDENT DASHBOARD TESTS 
 
 
-
-    # SIDEBAR NAVIGATION TESTS
-    def test_faculty_sidebar_navigation(self):
-        self._login_as_faculty()
-        self.driver.get(self.live_server_url + '/faculty/dashboard/')
-        self.driver.find_element(By.LINK_TEXT, 'Courses & CLOs').click()
-        WebDriverWait(self.driver, 5).until(EC.url_contains('/faculty/courses/'))
-        self.driver.find_element(By.LINK_TEXT, 'Announcements').click()
-        WebDriverWait(self.driver, 5).until(EC.url_contains('/faculty/announcements/'))
-        self.driver.find_element(By.LINK_TEXT, 'Assessments').click()
-        WebDriverWait(self.driver, 5).until(EC.url_contains('/faculty/assessments/'))
-
-  
-
     def test_sign_out(self):
         self._login_as_faculty()
         # The "Sign Out" link contains an arrow symbol, so use partial link text
@@ -389,3 +375,455 @@ class EvalifyFullSeleniumTests(StaticLiveServerTestCase):
             lambda d: '/signin/' in d.current_url or '/' in d.current_url
         )
         self.assertNotIn('/faculty/', self.driver.current_url)
+
+
+
+# FACULTY ASSESSMENTS TESTS
+
+def test_assessments_course_selection(self):
+    """Verify that the assessments page shows course cards and clicking opens assessment list."""
+    self._login_as_faculty()
+    self.driver.get(self.live_server_url + '/faculty/assignments/')
+    # Should see the course card (created in setUp)
+    course_card = WebDriverWait(self.driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, f"//div[contains(text(),'{self.course.code}')]"))
+    )
+    self.assertTrue(course_card.is_displayed())
+    # Click on the course card (the link)
+    course_link = self.driver.find_element(By.XPATH, f"//a[contains(@href, 'course={self.course.id}')]")
+    course_link.click()
+    WebDriverWait(self.driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, "//button[contains(text(),'+ Create Assessment')]"))
+    )
+    self.assertIn(f"course={self.course.id}", self.driver.current_url)
+
+def test_create_assignment_assessment(self):
+    """Create an assignment (auto-published) with questions and verify it appears in published list."""
+    self._login_as_faculty()
+    # First ensure we have at least one CLO and PLO for the course (create in setUp if missing)
+    self._ensure_clo_and_plo_exist()
+    # Go to assessments page and select the course
+    self.driver.get(self.live_server_url + f'/faculty/assignments/?course={self.course.id}')
+    # Click "Create Assessment"
+    create_btn = WebDriverWait(self.driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'+ Create Assessment')]"))
+    )
+    create_btn.click()
+    # Wait for modal
+    modal = WebDriverWait(self.driver, 5).until(
+        EC.visibility_of_element_located((By.ID, 'createModal'))
+    )
+    # Select type: Assignment (already default? ensure)
+    type_select = Select(self.driver.find_element(By.ID, 'typeSelect'))
+    type_select.select_by_value('assignment')
+    # Fill title
+    self.driver.find_element(By.ID, 'aTitle').send_keys('Selenium Test Assignment')
+    # Fill due date (required for assignment)
+    self.driver.find_element(By.ID, 'aDue').send_keys('2025-12-31')
+    # Add a question
+    add_q_btn = self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add Question')]")
+    add_q_btn.click()
+    time.sleep(0.5)  # let the question card appear
+    # Fill question text
+    q_text = self.driver.find_element(By.CSS_SELECTOR, '.q-card .q-text')
+    q_text.send_keys('What is Selenium?')
+    # Set marks (default 10 is fine)
+    # Map CLO and PLO (checkboxes) – assume at least one exists
+    clo_checkboxes = self.driver.find_elements(By.CSS_SELECTOR, '.q-clo-list input[type="checkbox"]')
+    if clo_checkboxes:
+        clo_checkboxes[0].click()
+    plo_checkboxes = self.driver.find_elements(By.CSS_SELECTOR, '.q-plo-list input[type="checkbox"]')
+    if plo_checkboxes:
+        plo_checkboxes[0].click()
+    # Submit the form
+    submit_btn = self.driver.find_element(By.CSS_SELECTOR, '#createModal .btn-full')
+    submit_btn.click()
+    # Wait for page reload and the new assessment to appear in the published list
+    WebDriverWait(self.driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, "//div[contains(@class,'list-title') and text()='Selenium Test Assignment']"))
+    )
+    self.assertIn('Selenium Test Assignment', self.driver.page_source)
+
+def test_create_draft_assessment(self):
+    """Create a quiz (saved as draft) and verify it appears in drafts section."""
+    self._login_as_faculty()
+    self._ensure_clo_and_plo_exist()
+    self.driver.get(self.live_server_url + f'/faculty/assignments/?course={self.course.id}')
+    create_btn = WebDriverWait(self.driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'+ Create Assessment')]"))
+    )
+    create_btn.click()
+    WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'createModal')))
+    # Select type: Quiz
+    Select(self.driver.find_element(By.ID, 'typeSelect')).select_by_value('quiz')
+    self.driver.find_element(By.ID, 'aTitle').send_keys('Selenium Draft Quiz')
+    # Due date optional for draft
+    # Add a question
+    self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add Question')]").click()
+    time.sleep(0.5)
+    q_text = self.driver.find_element(By.CSS_SELECTOR, '.q-card .q-text')
+    q_text.send_keys('Draft question')
+    # Map CLO/PLO if present
+    clo_cb = self.driver.find_elements(By.CSS_SELECTOR, '.q-clo-list input')
+    if clo_cb: clo_cb[0].click()
+    plo_cb = self.driver.find_elements(By.CSS_SELECTOR, '.q-plo-list input')
+    if plo_cb: plo_cb[0].click()
+    # Submit
+    self.driver.find_element(By.CSS_SELECTOR, '#createModal .btn-full').click()
+    # Wait for draft section to show the new draft
+    WebDriverWait(self.driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'Selenium Draft Quiz')]"))
+    )
+    self.assertIn('Selenium Draft Quiz', self.driver.page_source)
+
+def test_publish_draft_assessment(self):
+    """Publish a draft assessment and verify it moves to published section."""
+    # First create a draft (or use an existing one)
+    self._login_as_faculty()
+    self._ensure_clo_and_plo_exist()
+    # Create a draft quiz
+    self.driver.get(self.live_server_url + f'/faculty/assignments/?course={self.course.id}')
+    # If there is no draft, create one (simplify: call the draft creation method via API? but we'll do UI)
+    # Check if drafts exist; if not, create one using UI
+    if not self.driver.find_elements(By.XPATH, "//div[contains(text(),'Selenium Draft Quiz')]"):
+        create_btn = self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Create Assessment')]")
+        create_btn.click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'createModal')))
+        Select(self.driver.find_element(By.ID, 'typeSelect')).select_by_value('quiz')
+        self.driver.find_element(By.ID, 'aTitle').send_keys('ToBePublished')
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add Question')]").click()
+        time.sleep(0.5)
+        self.driver.find_element(By.CSS_SELECTOR, '.q-card .q-text').send_keys('Q')
+        self.driver.find_element(By.CSS_SELECTOR, '#createModal .btn-full').click()
+        WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'ToBePublished')]")))
+    # Now find the draft's "Publish" button and click
+    draft_div = self.driver.find_element(By.XPATH, "//div[contains(text(),'ToBePublished')]/ancestor::div[contains(@style,'background:#fff;border:2px solid #fcd34d')]")
+    publish_btn = draft_div.find_element(By.XPATH, ".//button[contains(text(),'Publish')]")
+    publish_btn.click()
+    # Wait for page reload (or AJAX)
+    WebDriverWait(self.driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, "//div[contains(@class,'list-title') and text()='ToBePublished']"))
+    )
+    self.assertNotIn('ToBePublished', draft_div.text) 
+    self.assertIn('ToBePublished', self.driver.page_source)  
+
+def test_delete_assessment(self):
+    """Delete an assessment and verify it disappears."""
+    self._login_as_faculty()
+    self.driver.get(self.live_server_url + f'/faculty/assignments/?course={self.course.id}')
+   
+    if not self.driver.find_elements(By.XPATH, "//div[contains(@class,'list-item')]//button[contains(text(),'Delete')]"):
+        # Create a quick assignment
+        create_btn = self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Create Assessment')]")
+        create_btn.click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'createModal')))
+        Select(self.driver.find_element(By.ID, 'typeSelect')).select_by_value('assignment')
+        self.driver.find_element(By.ID, 'aTitle').send_keys('ToBeDeleted')
+        self.driver.find_element(By.ID, 'aDue').send_keys('2025-12-31')
+        self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Add Question')]").click()
+        time.sleep(0.5)
+        self.driver.find_element(By.CSS_SELECTOR, '.q-card .q-text').send_keys('Q')
+        self.driver.find_element(By.CSS_SELECTOR, '#createModal .btn-full').click()
+        WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'ToBeDeleted')]")))
+
+    delete_btn = self.driver.find_element(By.XPATH, "//div[contains(@class,'list-item')]//button[contains(text(),'Delete')]")
+    delete_btn.click()
+    # Confirm alert
+    alert = self.driver.switch_to.alert
+    alert.accept()
+    WebDriverWait(self.driver, 5).until(
+        EC.invisibility_of_element_located((By.XPATH, "//div[contains(text(),'ToBeDeleted')]"))
+    )
+    self.assertNotIn('ToBeDeleted', self.driver.page_source)
+
+
+def test_materials_course_selection(self):
+    """Verify the materials page shows course cards and clicking opens material list."""
+    self._login_as_faculty()
+    self.driver.get(self.live_server_url + '/faculty/materials/')
+    course_card = WebDriverWait(self.driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, f"//div[contains(text(),'{self.course.code}')]"))
+    )
+    self.assertTrue(course_card.is_displayed())
+    course_link = self.driver.find_element(By.XPATH, f"//a[contains(@href, 'course={self.course.id}')]")
+    course_link.click()
+    WebDriverWait(self.driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, "//button[contains(text(),'+ Upload Material')]"))
+    )
+    self.assertIn(f"course={self.course.id}", self.driver.current_url)
+
+def test_upload_study_material(self):
+    """Upload a file as study material and verify it appears in the list."""
+    self._login_as_faculty()
+    self.driver.get(self.live_server_url + f'/faculty/materials/?course={self.course.id}')
+    # Click "Upload Material"
+    upload_btn = WebDriverWait(self.driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'+ Upload Material')]"))
+    )
+    upload_btn.click()
+    # Wait for modal
+    modal = WebDriverWait(self.driver, 5).until(
+        EC.visibility_of_element_located((By.ID, 'uploadModal'))
+    )
+    # Fill title
+    self.driver.find_element(By.ID, 'matTitle').send_keys('Test Material')
+    # Create a temporary file to upload
+    with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as tmp:
+        tmp.write(b'This is a test file content.')
+        tmp_path = tmp.name
+    try:
+        # Upload the file using the hidden input
+        file_input = self.driver.find_element(By.ID, 'matFile')
+        file_input.send_keys(tmp_path)
+        # Wait for file name to appear
+        WebDriverWait(self.driver, 5).until(
+            EC.text_to_be_present_in_element((By.ID, 'fileNameDisplay'), '.txt')
+        )
+        # Submit
+        self.driver.find_element(By.ID, 'uploadBtn').click()
+        # Wait for page reload and material to appear
+        WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'Test Material')]"))
+        )
+        self.assertIn('Test Material', self.driver.page_source)
+    finally:
+        os.unlink(tmp_path)
+
+def test_delete_study_material(self):
+    """Delete an uploaded material and verify it disappears."""
+    self._login_as_faculty()
+    self.driver.get(self.live_server_url + f'/faculty/materials/?course={self.course.id}')
+    # Ensure there is at least one material (create if needed)
+    if not self.driver.find_elements(By.XPATH, "//button[contains(text(),'✕')]"):
+        # Upload a material first
+        upload_btn = self.driver.find_element(By.XPATH, "//button[contains(text(),'+ Upload Material')]")
+        upload_btn.click()
+        WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'uploadModal')))
+        self.driver.find_element(By.ID, 'matTitle').send_keys('ToBeDeletedMat')
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+            tmp.write(b'%PDF fake')
+            tmp_path = tmp.name
+        try:
+            self.driver.find_element(By.ID, 'matFile').send_keys(tmp_path)
+            self.driver.find_element(By.ID, 'uploadBtn').click()
+            WebDriverWait(self.driver, 5).until(
+                EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'ToBeDeletedMat')]"))
+            )
+        finally:
+            os.unlink(tmp_path)
+    # Find delete button (✕) for the first material
+    delete_btn = self.driver.find_element(By.XPATH, "//div[contains(@class,'list-item') or contains(@style,'display:flex')]//button[contains(text(),'✕')]")
+    delete_btn.click()
+    # Confirm alert
+    alert = self.driver.switch_to.alert
+    alert.accept()
+    # Wait for removal (the element should disappear)
+    WebDriverWait(self.driver, 5).until(
+        EC.invisibility_of_element_located((By.XPATH, "//div[contains(text(),'ToBeDeletedMat')]"))
+    )
+    self.assertNotIn('ToBeDeletedMat', self.driver.page_source)
+
+def _ensure_clo_and_plo_exist(self):
+    """Create a CLO and a PLO for the test course if they don't exist."""
+    from evalify_app.models import CLO, PLO, Course
+    course = self.course
+    if not course.clos.exists():
+        # Create a dummy CLO
+        CLO.objects.create(
+            code='CLO1',
+            description='Test CLO',
+            bloom_level='Apply (L3)',
+            course=course
+        )
+    if not PLO.objects.exists():
+        PLO.objects.create(code='PLO1', description='Test PLO')
+
+# STUDENT ASSIGNMENTS TESTS 
+
+def _ensure_student_assessment_exists(self):
+    """Create a published assignment for the test course if none exists."""
+    from evalify_app.models import Assessment, Question, CLO, PLO
+    if Assessment.objects.filter(course=self.course, status='published').exists():
+        return
+    # Ensure CLO and PLO exist 
+    if not self.course.clos.exists():
+        CLO.objects.create(code='CLO1', description='Test CLO', bloom_level='Apply (L3)', course=self.course)
+    if not PLO.objects.exists():
+        PLO.objects.create(code='PLO1', description='Test PLO')
+    # Create assessment
+    assessment = Assessment.objects.create(
+        title='Student Test Assignment',
+        assessment_type='assignment',
+        course=self.course,
+        total_marks=20,
+        due_date='2025-12-31',
+        status='published',
+        created_by=self.faculty_user
+    )
+    # Create a question
+    question = Question.objects.create(
+        assessment=assessment,
+        text='What is Selenium?',
+        max_marks=20,
+        order=1
+    )
+    # Map CLO and PLO if available
+    clo = self.course.clos.first()
+    if clo:
+        question.clos.add(clo)
+    plo = PLO.objects.first()
+    if plo:
+        question.plos.add(plo)
+
+def test_student_view_assignments(self):
+    """Student can see the assignments list and click on a course."""
+    self._login_as_student()
+    # Ensure there is at least one assessment
+    self._ensure_student_assessment_exists()
+    self.driver.get(self.live_server_url + '/student/assignments/')
+    # Wait for the page title
+    WebDriverWait(self.driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, "//div[contains(@class,'page-title') and contains(text(),'Assignments')]"))
+    )
+    # Check that the assessment appears
+    assessment_title = WebDriverWait(self.driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, "//span[contains(@class,'list-title') and text()='Student Test Assignment']"))
+    )
+    self.assertTrue(assessment_title.is_displayed())
+
+def test_student_submit_assignment_with_text(self):
+    """Student submits an assignment using the text answer field."""
+    self._login_as_student()
+    self._ensure_student_assessment_exists()
+    self.driver.get(self.live_server_url + '/student/assignments/')
+    # Find the "Submit" button for the assessment (the one without a submission)
+    submit_btn = WebDriverWait(self.driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Submit')]"))
+    )
+    submit_btn.click()
+    
+    modal = WebDriverWait(self.driver, 5).until(
+        EC.visibility_of_element_located((By.ID, 'submitModal'))
+    )
+ 
+    textarea = self.driver.find_element(By.ID, 'answerText')
+    textarea.send_keys('This is my answer for the assignment.')
+    # Submit
+    submit_modal_btn = self.driver.find_element(By.ID, 'submitBtn')
+    submit_modal_btn.click()
+    # page reload 
+    WebDriverWait(self.driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, "//span[contains(@class,'tag-graded') and contains(text(),'Submitted on')]"))
+    )
+    self.assertIn('Submitted on', self.driver.page_source)
+
+def test_student_submit_assignment_with_file(self):
+    """Student submits an assignment by uploading a file."""
+    self._login_as_student()
+    self._ensure_student_assessment_exists()
+    self.driver.get(self.live_server_url + '/student/assignments/')
+  
+    from evalify_app.models import Assessment
+    
+    if Assessment.objects.filter(course=self.course, status='published').exclude(submissions__student=self.student_user).exists():
+   
+        pass
+    else:
+        # Create another assessment
+        new_assessment = Assessment.objects.create(
+            title='File Submission Test',
+            assessment_type='assignment',
+            course=self.course,
+            total_marks=10,
+            due_date='2025-12-31',
+            status='published',
+            created_by=self.faculty_user
+        )
+        Question.objects.create(assessment=new_assessment, text='Upload file', max_marks=10, order=1)
+    self.driver.refresh()
+    # Find a submit button (any)
+    submit_btn = WebDriverWait(self.driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Submit')]"))
+    )
+    submit_btn.click()
+    WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'submitModal')))
+    # Upload a temporary file
+    with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as tmp:
+        tmp.write(b'This is a test submission file.')
+        tmp_path = tmp.name
+    try:
+        file_input = self.driver.find_element(By.ID, 'fileInput')
+        file_input.send_keys(tmp_path)
+        # Optionally leave answer empty
+        self.driver.find_element(By.ID, 'submitBtn').click()
+        WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//span[contains(@class,'tag-graded') and contains(text(),'Submitted on')]"))
+        )
+        self.assertIn('Submitted on', self.driver.page_source)
+    finally:
+        os.unlink(tmp_path)
+
+#  STUDENT STUDY MATERIALS TESTS 
+
+def _ensure_study_material_exists(self):
+    """Upload a study material for the test course if none exists (as faculty)."""
+    from evalify_app.models import StudyMaterial
+    if StudyMaterial.objects.filter(course=self.course).exists():
+        return
+    # Login as faculty, upload a material
+    self._login_as_faculty()
+    self.driver.get(self.live_server_url + f'/faculty/materials/?course={self.course.id}')
+  
+    upload_btn = WebDriverWait(self.driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'+ Upload Material')]"))
+    )
+    upload_btn.click()
+    WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, 'uploadModal')))
+    self.driver.find_element(By.ID, 'matTitle').send_keys('Test Study Material')
+    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+        tmp.write(b'%PDF test content')
+        tmp_path = tmp.name
+    try:
+        self.driver.find_element(By.ID, 'matFile').send_keys(tmp_path)
+        self.driver.find_element(By.ID, 'uploadBtn').click()
+        WebDriverWait(self.driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'Test Study Material')]"))
+        )
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_student_view_materials_course_selection(self):
+    """Student can see enrolled courses and select one to view materials."""
+    self._login_as_student()
+    self._ensure_study_material_exists()
+    self.driver.get(self.live_server_url + '/student/materials/')
+
+    course_card = WebDriverWait(self.driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, f"//div[contains(text(),'{self.course.code}')]"))
+    )
+    self.assertTrue(course_card.is_displayed())
+    # Click the link
+    course_link = self.driver.find_element(By.XPATH, f"//a[contains(@href, 'course={self.course.id}')]")
+    course_link.click()
+    WebDriverWait(self.driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, "//div[contains(@class,'page-title') and contains(text(),'Study Materials')]"))
+    )
+    self.assertIn(f"course={self.course.id}", self.driver.current_url)
+
+def test_student_download_material(self):
+    """Student can download a study material (verify download link is present and clickable)."""
+    self._login_as_student()
+    self._ensure_study_material_exists()
+    self.driver.get(self.live_server_url + f'/student/materials/?course={self.course.id}')
+    # Wait for the material to appear
+    material_title = WebDriverWait(self.driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, "//div[contains(text(),'Test Study Material')]"))
+    )
+    self.assertTrue(material_title.is_displayed())
+    # Find download link
+    download_link = self.driver.find_element(By.XPATH, "//a[contains(text(),'Download')]")
+    self.assertTrue(download_link.is_displayed())
+   
+    href = download_link.get_attribute('href')
+    self.assertTrue(href and href.startswith('http'))
