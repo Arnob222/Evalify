@@ -4,9 +4,9 @@
 {% block content %}
 
 {% if not selected_course %}
-<!-- ═══════════════════════════════ COURSE LIST ═══════════════════════════════ -->
+<!--  Course list -->
 <div class="page-title">Study Materials</div>
-<div class="page-sub">Select a course to upload and manage its study materials for students.</div>
+<div class="page-sub">Select a course to upload and manage lecture notes, reference materials and videos.</div>
 
 {% if courses %}
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:4px;">
@@ -18,15 +18,13 @@
          onmouseover="this.style.borderColor='var(--teal)';this.style.boxShadow='0 2px 12px rgba(32,178,170,.12)';"
          onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='none';">
       <div style="width:46px;height:46px;border-radius:10px;background:var(--teal-light);
-                  display:flex;align-items:center;justify-content:center;
-                  font-size:22px;flex-shrink:0;">📁</div>
+                  display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">📁</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:11px;font-weight:600;color:var(--teal);
-                    text-transform:uppercase;letter-spacing:.4px;">{{ c.code }}</div>
-        <div style="font-size:14px;font-weight:700;margin-top:1px;
-                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.name }}</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:2px;">
-          {{ c.material_count }} file{{ c.material_count|pluralize }}
+        <div style="font-size:11px;font-weight:600;color:var(--teal);text-transform:uppercase;letter-spacing:.4px;">{{ c.code }}</div>
+        <div style="font-size:14px;font-weight:700;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.name }}</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:2px;display:flex;gap:10px;">
+          <span>{{ c.material_count }} file{{ c.material_count|pluralize }}</span>
+          {% if c.hidden_count %}<span style="color:var(--orange);">{{ c.hidden_count }} hidden</span>{% endif %}
         </div>
       </div>
       <span style="color:var(--teal);font-size:18px;">›</span>
@@ -44,77 +42,113 @@
 
 
 {% else %}
-<!-- ═══════════════════════════════ MATERIALS LIST ═══════════════════════════════ -->
+<!--  Material list -->
 
 <!-- Breadcrumb -->
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:22px;font-size:13px;">
   <a href="{% url 'faculty_materials' %}"
-     style="color:var(--gray);text-decoration:none;padding:5px 12px;border:1px solid var(--border);
-            border-radius:6px;background:#fff;"
+     style="color:var(--gray);text-decoration:none;padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:#fff;"
      onmouseover="this.style.color='var(--teal)';this.style.borderColor='var(--teal)';"
-     onmouseout="this.style.color='var(--gray)';this.style.borderColor='var(--border)';">
-    ← Back
-  </a>
+     onmouseout="this.style.color='var(--gray)';this.style.borderColor='var(--border)';">← Back</a>
   <span style="color:var(--light);">/</span>
   <span style="color:var(--gray);">Study Materials</span>
   <span style="color:var(--light);">/</span>
   <span style="font-weight:600;">{{ selected_course.code }}: {{ selected_course.name }}</span>
 </div>
 
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
   <div>
     <div class="page-title">{{ selected_course.name }}</div>
-    <div class="page-sub" style="margin-bottom:0;">
-      {{ material_count }} material{{ material_count|pluralize }} uploaded
-    </div>
+    <div class="page-sub" style="margin-bottom:0;">{{ material_count }} material{{ material_count|pluralize }} uploaded</div>
   </div>
   <button class="btn btn-primary" onclick="openModal('uploadModal')">+ Upload Material</button>
 </div>
 
+<!-- Type filter tabs -->
+<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;">
+  <button class="filter-tab active" data-type="all" onclick="filterType('all',this)">All</button>
+  <button class="filter-tab" data-type="lecture_note" onclick="filterType('lecture_note',this)">📄 Lecture Notes</button>
+  <button class="filter-tab" data-type="reference" onclick="filterType('reference',this)">📚 References</button>
+  <button class="filter-tab" data-type="video" onclick="filterType('video',this)">🎬 Videos</button>
+  <button class="filter-tab" data-type="assignment" onclick="filterType('assignment',this)">📋 Assignment Sheets</button>
+  <button class="filter-tab" data-type="other" onclick="filterType('other',this)">📎 Other</button>
+</div>
+
 {% if materials %}
-<div style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+<div style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;" id="materialList">
   {% for m in materials %}
   {% with ext=m.filename|lower %}
-  <div id="mat-{{ m.id }}"
+  <div id="mat-{{ m.id }}" data-type="{{ m.material_type }}"
        style="display:flex;align-items:center;gap:14px;padding:14px 20px;
-              {% if not forloop.last %}border-bottom:1px solid #f3f4f6;{% endif %}">
+              {% if not forloop.last %}border-bottom:1px solid #f3f4f6;{% endif %}
+              {% if not m.is_visible %}opacity:0.5;background:#fafafa;{% endif %}
+              transition:opacity .2s;">
 
-    <!-- File type badge -->
+    <!-- Type icon -->
     <div style="width:42px;height:42px;border-radius:8px;flex-shrink:0;
                 display:flex;flex-direction:column;align-items:center;justify-content:center;
-                background:{% if '.pdf' in ext %}#fef2f2{% elif '.doc' in ext %}#eff6ff{% elif '.ppt' in ext %}#fff7ed{% elif '.xls' in ext %}#f0fdf4{% elif '.zip' in ext or '.rar' in ext %}#f5f3ff{% elif '.jpg' in ext or '.jpeg' in ext or '.png' in ext %}#fdf4ff{% else %}#f8fafc{% endif %};">
+                background:{% if m.material_type == 'video' %}#fff7ed{% elif '.pdf' in ext %}#fef2f2{% elif '.doc' in ext %}#eff6ff{% elif '.ppt' in ext %}#fff7ed{% else %}#f8fafc{% endif %};">
       <span style="font-size:18px;line-height:1;">
-        {% if '.pdf' in ext %}📄{% elif '.doc' in ext %}📝{% elif '.ppt' in ext %}📊{% elif '.xls' in ext %}📋{% elif '.zip' in ext or '.rar' in ext %}🗜️{% elif '.jpg' in ext or '.jpeg' in ext or '.png' in ext %}🖼️{% else %}📄{% endif %}
+        {% if m.material_type == 'video' %}🎬
+        {% elif '.pdf' in ext %}📄{% elif '.doc' in ext %}📝{% elif '.ppt' in ext %}📊
+        {% elif '.xls' in ext %}📋{% elif '.zip' in ext or '.rar' in ext %}🗜️
+        {% elif '.jpg' in ext or '.jpeg' in ext or '.png' in ext %}🖼️{% else %}📄{% endif %}
       </span>
       <span style="font-size:9px;font-weight:700;margin-top:1px;
-                   color:{% if '.pdf' in ext %}#dc2626{% elif '.doc' in ext %}#2563eb{% elif '.ppt' in ext %}#ea580c{% elif '.xls' in ext %}#16a34a{% elif '.zip' in ext or '.rar' in ext %}#7c3aed{% elif '.jpg' in ext or '.jpeg' in ext or '.png' in ext %}#db2777{% else %}var(--gray){% endif %};">
-        {% if '.pdf' in ext %}PDF{% elif '.docx' in ext %}DOCX{% elif '.doc' in ext %}DOC{% elif '.pptx' in ext %}PPTX{% elif '.ppt' in ext %}PPT{% elif '.xlsx' in ext %}XLSX{% elif '.xls' in ext %}XLS{% elif '.zip' in ext %}ZIP{% elif '.rar' in ext %}RAR{% elif '.png' in ext %}PNG{% elif '.jpg' in ext or '.jpeg' in ext %}JPG{% else %}FILE{% endif %}
+                   color:{% if m.material_type == 'video' %}#ea580c{% elif '.pdf' in ext %}#dc2626{% elif '.doc' in ext %}#2563eb{% elif '.ppt' in ext %}#ea580c{% else %}var(--gray){% endif %};">
+        {% if m.material_type == 'video' %}VIDEO
+        {% elif '.pdf' in ext %}PDF{% elif '.docx' in ext %}DOCX{% elif '.doc' in ext %}DOC
+        {% elif '.pptx' in ext %}PPTX{% elif '.ppt' in ext %}PPT{% elif '.xlsx' in ext %}XLSX
+        {% elif '.zip' in ext %}ZIP{% elif '.png' in ext %}PNG{% elif '.jpg' in ext or '.jpeg' in ext %}JPG
+        {% else %}FILE{% endif %}
       </span>
     </div>
 
     <!-- Info -->
     <div style="flex:1;min-width:0;">
-      <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-        {{ m.title }}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ m.title }}
+        </div>
+        <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;flex-shrink:0;
+          background:{% if m.material_type == 'video' %}#fff7ed{% elif m.material_type == 'lecture_note' %}#dbeafe{% elif m.material_type == 'reference' %}#d1fae5{% else %}#f3f4f6{% endif %};
+          color:{% if m.material_type == 'video' %}#ea580c{% elif m.material_type == 'lecture_note' %}#1d4ed8{% elif m.material_type == 'reference' %}#065f46{% else %}#374151{% endif %};">
+          {{ m.get_material_type_display }}
+        </span>
+        {% if not m.is_visible %}
+        <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:#fee2e2;color:#991b1b;">Hidden</span>
+        {% endif %}
       </div>
       {% if m.description %}
-      <div style="font-size:12px;color:var(--gray);margin-top:2px;
-                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+      <div style="font-size:12px;color:var(--gray);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
         {{ m.description }}
       </div>
       {% endif %}
       <div style="font-size:11px;color:var(--light);margin-top:3px;">
-        {{ m.filename }} &nbsp;·&nbsp; Uploaded {{ m.uploaded_at|date:"M d, Y" }}
+        {% if m.video_url %}🔗 {{ m.video_url|truncatechars:50 }}{% else %}{{ m.filename }}{% endif %}
+        &nbsp;·&nbsp; {{ m.uploaded_at|date:"M d, Y" }}
       </div>
     </div>
 
     <!-- Actions -->
-    <div style="display:flex;gap:8px;flex-shrink:0;">
-      <a href="{{ m.file.url }}" target="_blank" class="btn btn-outline btn-sm">
-        ⬇ Download
-      </a>
+    <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">
+      {% if m.material_type == 'video' and m.embed_url %}
+      <button class="btn btn-outline btn-sm" onclick="previewVideo('{{ m.embed_url }}','{{ m.title|escapejs }}')">▶ Preview</button>
+      {% elif m.file %}
+      <a href="{{ m.file.url }}" target="_blank" class="btn btn-outline btn-sm">⬇ Download</a>
+      {% endif %}
+
+      <!-- Visibility toggle -->
+      <button id="vis-btn-{{ m.id }}"
+              onclick="toggleVisibility({{ m.id }}, this)"
+              class="btn btn-outline btn-sm"
+              title="{% if m.is_visible %}Hide from students{% else %}Show to students{% endif %}"
+              style="{% if m.is_visible %}color:var(--teal);border-color:var(--teal);{% else %}color:var(--orange);border-color:var(--orange);{% endif %}">
+        {% if m.is_visible %}👁 Visible{% else %}🚫 Hidden{% endif %}
+      </button>
+
       <button class="btn btn-outline btn-sm"
-              style="color:var(--gray);border-color:var(--border);"
+              style="color:var(--gray);"
               onmouseover="this.style.color='var(--red)';this.style.borderColor='#fca5a5';"
               onmouseout="this.style.color='var(--gray)';this.style.borderColor='var(--border)';"
               onclick="deleteMaterial({{ m.id }})">✕</button>
@@ -125,13 +159,10 @@
 </div>
 
 {% else %}
-<div style="background:#fff;border:1px dashed var(--border);border-radius:12px;
-            padding:48px 20px;text-align:center;">
+<div style="background:#fff;border:2px dashed var(--border);border-radius:12px;padding:48px 20px;text-align:center;">
   <div style="font-size:40px;margin-bottom:10px;">📁</div>
   <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">No materials yet</div>
-  <div style="font-size:13px;color:var(--gray);margin-bottom:18px;">
-    Upload PDFs, slides, notes, or any files for your students.
-  </div>
+  <div style="font-size:13px;color:var(--gray);margin-bottom:18px;">Upload PDFs, slides, notes, or add reference video links.</div>
   <button class="btn btn-primary" onclick="openModal('uploadModal')">+ Upload First Material</button>
 </div>
 {% endif %}
@@ -139,13 +170,11 @@
 
 <!-- Upload Modal -->
 <div class="modal-overlay" id="uploadModal">
-  <div class="modal" style="max-width:480px;">
+  <div class="modal" style="max-width:500px;">
     <div class="modal-head">
       <div>
         <div class="modal-title">Upload Study Material</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:2px;">
-          {{ selected_course.code }}: {{ selected_course.name }}
-        </div>
+        <div style="font-size:12px;color:var(--gray);margin-top:2px;">{{ selected_course.code }}: {{ selected_course.name }}</div>
       </div>
       <button class="modal-close" onclick="closeModal('uploadModal')">&times;</button>
     </div>
@@ -155,36 +184,40 @@
         <input type="hidden" name="course_id" value="{{ selected_course.id }}">
 
         <div class="form-group">
+          <label class="form-label">Content Type <span style="color:var(--red);">*</span></label>
+          <select name="material_type" id="matType" class="form-control" onchange="onTypeChange(this.value)">
+            <option value="lecture_note">📄 Lecture Note</option>
+            <option value="reference">📚 Reference Material</option>
+            <option value="video">🎬 Reference Video</option>
+            <option value="assignment">📋 Assignment Sheet</option>
+            <option value="other">📎 Other</option>
+          </select>
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Title <span style="color:var(--red);">*</span></label>
-          <input class="form-control" name="title" id="matTitle"
-                 placeholder="e.g. Chapter 3 – Sorting Algorithms">
+          <input class="form-control" name="title" id="matTitle" placeholder="e.g. Week 3 – Sorting Algorithms">
         </div>
 
         <div class="form-group">
-          <label class="form-label">
-            Description
-            <span style="color:var(--gray);font-weight:400;">(optional)</span>
-          </label>
-          <textarea class="form-control" name="description" id="matDesc" rows="2"
-                    placeholder="Brief note about this file..." style="resize:vertical;"></textarea>
+          <label class="form-label">Description <span style="color:var(--gray);font-weight:400;">(optional)</span></label>
+          <textarea class="form-control" name="description" rows="2" placeholder="Brief note..."></textarea>
         </div>
 
-        <!-- File drop zone -->
-        <div class="form-group">
+        <!-- File upload section -->
+        <div id="fileSection" class="form-group">
           <label class="form-label">File <span style="color:var(--red);">*</span></label>
           <label for="matFile"
                  style="display:flex;flex-direction:column;align-items:center;justify-content:center;
                         border:2px dashed var(--border);border-radius:8px;padding:22px 16px;
-                        cursor:pointer;transition:border-color .2s;text-align:center;"
-                 onmouseover="this.style.borderColor='var(--teal)';"
-                 onmouseout="this.style.borderColor='var(--border)';"
-                 id="dropLabel">
+                        cursor:pointer;transition:border-color .2s,background .2s;text-align:center;"
+                 id="dropLabel"
+                 onmouseover="this.style.borderColor='var(--teal)';this.style.background='var(--teal-light)';"
+                 onmouseout="if(!document.getElementById('matFile').files.length){this.style.borderColor='var(--border)';this.style.background='transparent';}">
             <span style="font-size:28px;margin-bottom:6px;">📂</span>
-            <span style="font-size:13px;font-weight:500;color:var(--text);">
-              Click to choose a file
-            </span>
+            <span style="font-size:13px;font-weight:500;">Click to choose a file</span>
             <span style="font-size:11px;color:var(--gray);margin-top:3px;" id="fileNameDisplay">
-              PDF, Word, PowerPoint, Excel, ZIP, images, code
+              PDF, Word, PowerPoint, Excel, ZIP, images
             </span>
           </label>
           <input type="file" name="file" id="matFile"
@@ -192,13 +225,42 @@
                  style="display:none;" onchange="showFileName(this)">
         </div>
 
-        <div id="uploadError" style="color:var(--red);font-size:13px;display:none;"></div>
+        <!-- Video URL section (shown when type = video) -->
+        <div id="videoSection" class="form-group" style="display:none;">
+          <label class="form-label">Video URL <span style="color:var(--red);">*</span></label>
+          <input class="form-control" name="video_url" id="matVideoUrl"
+                 placeholder="https://www.youtube.com/watch?v=...">
+          <div style="font-size:11px;color:var(--gray);margin-top:5px;">
+            💡 Supports YouTube, Google Drive, Vimeo, or any public video link.
+          </div>
+          <!-- Preview -->
+          <div id="videoPreviewWrap" style="display:none;margin-top:10px;">
+            <iframe id="videoPreviewFrame" width="100%" height="200"
+                    style="border-radius:8px;border:none;" allowfullscreen></iframe>
+          </div>
+        </div>
+
+        <div id="uploadError" style="color:var(--red);font-size:13px;display:none;
+             padding:8px 12px;background:var(--red-bg);border-radius:6px;margin-top:4px;"></div>
       </form>
     </div>
     <div class="modal-foot">
-      <button class="btn btn-primary btn-full" id="uploadBtn" onclick="doUpload()">
-        Upload Material
-      </button>
+      <button class="btn btn-primary btn-full" id="uploadBtn" onclick="doUpload()">Upload Material</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Video Preview Modal -->
+<div class="modal-overlay" id="videoModal">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-head">
+      <div class="modal-title" id="videoModalTitle">Video Preview</div>
+      <button class="modal-close" onclick="closeVideoModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:16px 24px 20px;">
+      <iframe id="videoModalFrame" width="100%" height="380"
+              style="border-radius:8px;border:none;" allowfullscreen></iframe>
     </div>
   </div>
 </div>
@@ -209,28 +271,91 @@
 
 {% block scripts %}
 {% if selected_course %}
+<style>
+.filter-tab {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--gray);
+  transition: all .2s;
+  font-family: inherit;
+}
+.filter-tab.active, .filter-tab:hover {
+  background: var(--sidebar);
+  color: #fff;
+  border-color: var(--sidebar);
+}
+</style>
+
 <script>
-function showFileName(input) {
-  const name = input.files[0]?.name || 'PDF, Word, PowerPoint, Excel, ZIP, images, code';
-  document.getElementById('fileNameDisplay').textContent = name;
-  document.getElementById('dropLabel').style.borderColor = 'var(--teal)';
-  document.getElementById('dropLabel').style.background  = 'var(--teal-light)';
+/* ── Type filter ── */
+function filterType(type, btn) {
+  document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#materialList [data-type]').forEach(row => {
+    row.style.display = (type === 'all' || row.dataset.type === type) ? '' : 'none';
+  });
 }
 
+/* ── Upload form type change ── */
+function onTypeChange(val) {
+  const isVideo = val === 'video';
+  document.getElementById('fileSection').style.display  = isVideo ? 'none' : 'block';
+  document.getElementById('videoSection').style.display = isVideo ? 'block' : 'none';
+}
+
+/* ── Video URL live preview ── */
+document.addEventListener('input', function(e) {
+  if (e.target.id !== 'matVideoUrl') return;
+  const url = e.target.value.trim();
+  const embed = toEmbed(url);
+  const wrap  = document.getElementById('videoPreviewWrap');
+  const frame = document.getElementById('videoPreviewFrame');
+  if (embed) { frame.src = embed; wrap.style.display = 'block'; }
+  else { wrap.style.display = 'none'; frame.src = ''; }
+});
+
+function toEmbed(url) {
+  if (!url) return '';
+  let m = url.match(/youtu\.be\/([^?&]+)/);
+  if (m) return `https://www.youtube.com/embed/${m[1]}`;
+  m = url.match(/[?&]v=([^&]+)/);
+  if (m) return `https://www.youtube.com/embed/${m[1]}`;
+  if (url.includes('youtube.com/embed/')) return url;
+  return url;  // other platforms — use as-is
+}
+
+function showFileName(input) {
+  const name = input.files[0]?.name || 'PDF, Word, PowerPoint, Excel, ZIP, images';
+  document.getElementById('fileNameDisplay').textContent = name;
+  const lbl = document.getElementById('dropLabel');
+  lbl.style.borderColor = 'var(--teal)';
+  lbl.style.background  = 'var(--teal-light)';
+}
+
+/* ── Upload ── */
 async function doUpload() {
   const errEl = document.getElementById('uploadError');
   const btn   = document.getElementById('uploadBtn');
   const title = document.getElementById('matTitle').value.trim();
+  const type  = document.getElementById('matType').value;
   const file  = document.getElementById('matFile').files[0];
+  const video = document.getElementById('matVideoUrl')?.value.trim() || '';
   errEl.style.display = 'none';
-  if (!title) { errEl.textContent='Title is required.'; errEl.style.display='block'; return; }
-  if (!file)  { errEl.textContent='Please select a file.'; errEl.style.display='block'; return; }
+
+  if (!title) { errEl.textContent = 'Title is required.'; errEl.style.display='block'; return; }
+  if (type === 'video' && !video) { errEl.textContent = 'Please enter a video URL.'; errEl.style.display='block'; return; }
+  if (type !== 'video' && !file) { errEl.textContent = 'Please select a file.'; errEl.style.display='block'; return; }
 
   btn.disabled = true; btn.textContent = 'Uploading...';
   const formData = new FormData(document.getElementById('uploadForm'));
   try {
     const res  = await fetch("{% url 'upload_material' %}", {
-      method:'POST', headers:{'X-CSRFToken': getCsrf()}, body: formData,
+      method: 'POST', headers: {'X-CSRFToken': getCsrf()}, body: formData,
     });
     const data = await res.json();
     if (data.success) { location.reload(); }
@@ -240,24 +365,59 @@ async function doUpload() {
       btn.disabled = false; btn.textContent = 'Upload Material';
     }
   } catch(e) {
-    errEl.textContent = 'Network error. Try again.';
+    errEl.textContent = 'Network error. Please try again.';
     errEl.style.display = 'block';
     btn.disabled = false; btn.textContent = 'Upload Material';
   }
 }
 
+/* ── Visibility toggle ── */
+async function toggleVisibility(id, btn) {
+  const row = document.getElementById(`mat-${id}`);
+  const res  = await fetch(`/faculty/materials/${id}/toggle/`, {
+    method: 'POST', headers: {'X-CSRFToken': getCsrf()},
+  });
+  const data = await res.json();
+  if (data.success) {
+    if (data.is_visible) {
+      row.style.opacity = '1'; row.style.background = '';
+      btn.textContent = '👁 Visible';
+      btn.style.color = 'var(--teal)'; btn.style.borderColor = 'var(--teal)';
+      btn.title = 'Hide from students';
+      const hiddenBadge = row.querySelector('[style*="Hidden"]');
+      if (hiddenBadge) hiddenBadge.remove();
+    } else {
+      row.style.opacity = '0.5'; row.style.background = '#fafafa';
+      btn.textContent = '🚫 Hidden';
+      btn.style.color = 'var(--orange)'; btn.style.borderColor = 'var(--orange)';
+      btn.title = 'Show to students';
+    }
+  }
+}
+
+/* ── Delete ── */
 async function deleteMaterial(id) {
   if (!confirm('Remove this material? Students will no longer be able to access it.')) return;
   const res  = await fetch(`/faculty/materials/${id}/delete/`, {
-    method:'DELETE', headers:{'X-CSRFToken': getCsrf()}
+    method: 'DELETE', headers: {'X-CSRFToken': getCsrf()},
   });
   const data = await res.json();
   if (data.success) {
     const el = document.getElementById(`mat-${id}`);
-    el.style.opacity = '0';
-    el.style.transition = 'opacity .3s';
+    el.style.opacity = '0'; el.style.transition = 'opacity .3s';
     setTimeout(() => el.remove(), 300);
   }
+}
+
+/* ── Video preview modal ── */
+function previewVideo(embedUrl, title) {
+  document.getElementById('videoModalTitle').textContent = title;
+  document.getElementById('videoModalFrame').src = embedUrl;
+  openModal('videoModal');
+}
+function closeVideoModal() {
+  document.getElementById('videoModalFrame').src = '';
+  closeModal('videoModal');
 }
 </script>
 {% endif %}

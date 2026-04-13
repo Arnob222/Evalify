@@ -570,11 +570,12 @@ def student_notifications(request):
 
 
 
-# ── Study Material Views ──────────────────────────────────────────────────────
+# Study Material Views 
 
 @faculty_required
 def faculty_materials(request):
     courses = Course.objects.filter(faculty=request.user)
+ 
     course_id = request.GET.get('course')
     if course_id:
         selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
@@ -587,8 +588,13 @@ def faculty_materials(request):
             'materials': materials,
             'material_count': materials.count(),
         })
+ 
+    # Course list view — annotate counts
     for c in courses:
         c.material_count = StudyMaterial.objects.filter(course=c).count()
+        c.visible_count  = StudyMaterial.objects.filter(course=c, is_visible=True).count()
+        c.hidden_count   = StudyMaterial.objects.filter(course=c, is_visible=False).count()
+ 
     return render(request, 'faculty/materials.html', {
         'selected_course': None,
         'courses': courses,
@@ -598,35 +604,64 @@ def faculty_materials(request):
 @faculty_required
 def upload_material(request):
     if request.method == 'POST':
-        course_id = request.POST.get('course_id')
-        title = request.POST.get('title', '').strip()
-        description = request.POST.get('description', '').strip()
+        course_id     = request.POST.get('course_id')
+        title         = request.POST.get('title', '').strip()
+        description   = request.POST.get('description', '').strip()
+        material_type = request.POST.get('material_type', 'lecture_note')
+        video_url     = request.POST.get('video_url', '').strip()
         uploaded_file = request.FILES.get('file')
+ 
         course = get_object_or_404(Course, id=course_id, faculty=request.user)
+ 
+        # ── Permission check ──
         if not title:
             return JsonResponse({'error': 'Title is required.'}, status=400)
-        if not uploaded_file:
+        if material_type == 'video' and not video_url and not uploaded_file:
+            return JsonResponse({'error': 'Please provide a video URL or upload a video file.'}, status=400)
+        if material_type != 'video' and not uploaded_file and not video_url:
             return JsonResponse({'error': 'Please select a file to upload.'}, status=400)
+ 
         material = StudyMaterial.objects.create(
-            course=course, title=title, description=description,
-            file=uploaded_file, uploaded_by=request.user,
+            course=course,
+            title=title,
+            description=description,
+            material_type=material_type,
+            file=uploaded_file,
+            video_url=video_url,
+            uploaded_by=request.user,
+            is_visible=True,
         )
         return JsonResponse({
-            'success': True,
-            'id': material.id,
-            'title': material.title,
-            'description': material.description,
-            'file_url': material.file.url,
-            'filename': material.filename(),
-            'uploaded_at': material.uploaded_at.strftime('%b %d, %Y'),
+            'success':       True,
+            'id':            material.id,
+            'title':         material.title,
+            'description':   material.description,
+            'material_type': material.material_type,
+            'type_label':    material.get_material_type_display(),
+            'file_url':      material.file.url if material.file else '',
+            'filename':      material.filename(),
+            'video_url':     material.video_url,
+            'embed_url':     material.embed_url(),
+            'is_video':      material.is_video(),
+            'is_visible':    material.is_visible,
+            'uploaded_at':   material.uploaded_at.strftime('%b %d, %Y'),
         })
     return JsonResponse({'error': 'POST required'}, status=400)
+
+@faculty_required
+def toggle_material_visibility(request, material_id):
+    """Faculty can show/hide a material from students."""
+    material = get_object_or_404(StudyMaterial, id=material_id, course__faculty=request.user)
+    material.is_visible = not material.is_visible
+    material.save()
+    return JsonResponse({'success': True, 'is_visible': material.is_visible})
 
 
 @faculty_required
 def delete_material(request, material_id):
     material = get_object_or_404(StudyMaterial, id=material_id, course__faculty=request.user)
-    material.file.delete(save=False)
+    if material.file:
+        material.file.delete(save=False)
     material.delete()
     return JsonResponse({'success': True})
 
@@ -634,28 +669,37 @@ def delete_material(request, material_id):
 @student_required
 def student_materials(request):
     enrollments = Enrollment.objects.filter(student=request.user)
-    courses = [e.course for e in enrollments]
+    courses     = [e.course for e in enrollments]
+ 
     course_id = request.GET.get('course')
     if course_id:
-        selected_course = get_object_or_404(Course, id=course_id)
+        selected_course = get_object_or_404(Course, id=int(course_id))
+ 
+        # Permission check — must be enrolled
         if selected_course not in courses:
             from django.shortcuts import redirect
             return redirect('student_materials')
+ 
+        # Only show visible materials
         materials = StudyMaterial.objects.filter(
-            course=selected_course
+            course=selected_course,
+            is_visible=True,         # ← students only see visible ones
         ).order_by('-uploaded_at')
+ 
         return render(request, 'student/materials.html', {
             'selected_course': selected_course,
-            'materials': materials,
-            'material_count': materials.count(),
+            'materials':       materials,
+            'material_count':  materials.count(),
         })
+ 
+    # Course list
     for c in courses:
-        c.material_count = StudyMaterial.objects.filter(course=c).count()
+        c.material_count = StudyMaterial.objects.filter(course=c, is_visible=True).count()
+ 
     return render(request, 'student/materials.html', {
         'selected_course': None,
-        'courses': courses,
+        'courses':         courses,
     })
-
 
 @faculty_required
 def add_plo(request):
@@ -674,7 +718,7 @@ def add_plo(request):
     return JsonResponse({'error': 'POST required'}, status=400)
 
 
-# ── Faculty Assignment Views ──────────────────────────────────────────────────
+# Faculty Assignment Views 
 
 @faculty_required
 def faculty_assignments(request):
@@ -683,7 +727,7 @@ def faculty_assignments(request):
 
     course_id = request.GET.get('course')
     if course_id:
-        # ── Course detail view ──────────────────────────────────────
+        # Course detail view 
         selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
         base_qs = Assessment.objects.filter(course=selected_course).select_related('course').prefetch_related(
             'questions', 'questions__clos', 'questions__plos'
@@ -704,7 +748,7 @@ def faculty_assignments(request):
             'total_subs': sum(a.submission_count for a in published_list),
         })
 
-    # ── Course list view ────────────────────────────────────────────
+    # Course list view 
     for c in courses:
         c.total_count = Assessment.objects.filter(course=c).count()
         c.draft_count = Assessment.objects.filter(course=c, status='draft').count()
@@ -788,7 +832,7 @@ def publish_assessment(request, assignment_id):
     return JsonResponse({'success': True})
 
 
-# ── Student Assignment Views ──────────────────────────────────────────────────
+# Student Assignment Views 
 
 @student_required
 def student_assignments(request):

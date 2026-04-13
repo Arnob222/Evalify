@@ -129,18 +129,57 @@ class QuestionGrade(models.Model):
 
 
 class StudyMaterial(models.Model):
-    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='materials')
-    title = models.CharField(max_length=200)
-    description = models.TextField(blank=True)
-    file = models.FileField(upload_to='materials/')
-    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-
+    MATERIAL_TYPE_CHOICES = [
+        ('lecture_note', 'Lecture Note'),
+        ('reference',    'Reference Material'),
+        ('video',        'Reference Video'),
+        ('assignment',   'Assignment Sheet'),
+        ('other',        'Other'),
+    ]
+ 
+    course       = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='materials')
+    title        = models.CharField(max_length=200)
+    description  = models.TextField(blank=True)
+    material_type = models.CharField(max_length=20, choices=MATERIAL_TYPE_CHOICES, default='lecture_note')
+ 
+    # File upload (for notes, PDFs, slides etc.)
+    file         = models.FileField(upload_to='materials/', blank=True, null=True)
+ 
+    # Video URL (YouTube / Google Drive / any link)
+    video_url    = models.URLField(blank=True)
+ 
+    uploaded_by  = models.ForeignKey(User, on_delete=models.CASCADE)
+    uploaded_at  = models.DateTimeField(auto_now_add=True)
+ 
+    # Visibility — faculty can hide a material temporarily
+    is_visible   = models.BooleanField(default=True)
+ 
     def __str__(self):
         return f"{self.title} ({self.course.code})"
-
+ 
     def filename(self):
-        return self.file.name.split('/')[-1]
+        if self.file:
+            return self.file.name.split('/')[-1]
+        return ''
+ 
+    def is_video(self):
+        return self.material_type == 'video' or bool(self.video_url)
+ 
+    def embed_url(self):
+        """Convert YouTube watch URL → embed URL for iframe."""
+        import re
+        url = self.video_url
+        if not url:
+            return ''
+        # youtu.be/ID
+        m = re.match(r'https?://youtu\.be/([^?&]+)', url)
+        if m:
+            return f"https://www.youtube.com/embed/{m.group(1)}"
+        # youtube.com/watch?v=ID
+        m = re.search(r'[?&]v=([^&]+)', url)
+        if m:
+            return f"https://www.youtube.com/embed/{m.group(1)}"
+        # Already an embed URL or other platform — return as-is
 
 
 class Announcement(models.Model):

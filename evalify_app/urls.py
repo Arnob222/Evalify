@@ -38,6 +38,7 @@ urlpatterns = [
     path('faculty/materials/upload/', views.upload_material, name='upload_material'),
     path('faculty/materials/<int:material_id>/delete/', views.delete_material, name='delete_material'),
     path('student/materials/', views.student_materials, name='student_materials'),
+    path('faculty/materials/<int:material_id>/toggle/', views.toggle_material_visibility, name='toggle_material_visibility'),
 
     #Student
     path('student/dashboard/', views.student_dashboard, name='student_dashboard'),
