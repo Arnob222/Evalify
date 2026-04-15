@@ -1,0 +1,732 @@
+evalify_app/
+├── views.py              ← student_clo_results এর পরে ADD করো
+├── urls.py               ← student section এ ১টা line ADD করো
+│
+└── templates/student/
+    └── progress_navigator.html  ← নতুন file বানাও ⬅️
+
+
+
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# views.py তে student_clo_results function এর পরে এই function ADD করো
+# ══════════════════════════════════════════════════════════════════════════
+
+@student_required
+def student_progress_navigator(request):
+    """
+    Personal Progress Navigator Dashboard.
+    Full CLO/PLO attainment mapping with interactive charts.
+    """
+    enrollments = Enrollment.objects.filter(
+        student=request.user
+    ).select_related('course').prefetch_related(
+        'course__clos__plos'
+    )
+
+    courses_data   = []
+    overall_clo_all = []   # all CLOs across all courses
+    overall_plo_map = {}   # PLO code → list of attainments
+    total_obtained  = 0
+    total_possible  = 0
+    grade_history   = []   # per-assessment over time
+
+    for enroll in enrollments:
+        course      = enroll.course
+        assessments = Assessment.objects.filter(
+            course=course, status='published'
+        ).order_by('created_at')
+        subs = Submission.objects.filter(
+            student=request.user,
+            assessment__in=assessments,
+            status__in=['graded', 'flagged'],
+        ).select_related('assessment')
+
+        # ── Overall course score ──────────────────────────────────────
+        course_obtained  = sum(s.total_score for s in subs)
+        course_possible  = sum(
+            s.assessment.total_marks for s in subs
+            if s.assessment.total_marks > 0
+        )
+        course_pct = round(
+            (course_obtained / course_possible * 100) if course_possible > 0 else 0, 1
+        )
+        total_obtained += course_obtained
+        total_possible += course_possible
+
+        # Grade letter
+        grade = '—'
+        if course_possible > 0:
+            if   course_pct >= 80: grade = 'A+'
+            elif course_pct >= 75: grade = 'A'
+            elif course_pct >= 70: grade = 'A-'
+            elif course_pct >= 65: grade = 'B+'
+            elif course_pct >= 60: grade = 'B'
+            elif course_pct >= 55: grade = 'B-'
+            elif course_pct >= 50: grade = 'C+'
+            elif course_pct >= 45: grade = 'C'
+            elif course_pct >= 40: grade = 'D'
+            else:                  grade = 'F'
+
+        # ── Per-CLO attainment ────────────────────────────────────────
+        clo_data = []
+        for clo in course.clos.all():
+            q_ids = list(Question.objects.filter(
+                assessment__in=assessments, clos=clo
+            ).values_list('id', flat=True))
+
+            qgs = QuestionGrade.objects.filter(
+                question_id__in=q_ids,
+                submission__student=request.user,
+                submission__in=subs,
+            )
+            clo_poss = sum(
+                Question.objects.get(id=qid).max_marks for qid in q_ids
+            )
+            clo_obt  = sum(g.marks_obtained for g in qgs)
+            att = round(
+                (clo_obt / clo_poss * 100) if clo_poss > 0 else 0, 1
+            )
+
+            plo_codes = [p.code for p in clo.plos.all()]
+
+            clo_entry = {
+                'code':        clo.code,
+                'description': clo.description,
+                'bloom':       clo.bloom_level,
+                'attainment':  att,
+                'obtained':    round(clo_obt, 1),
+                'possible':    clo_poss,
+                'plos':        plo_codes,
+                'course_code': course.code,
+            }
+            clo_data.append(clo_entry)
+            overall_clo_all.append(clo_entry)
+
+            # Aggregate PLO
+            for plo_code in plo_codes:
+                if plo_code not in overall_plo_map:
+                    overall_plo_map[plo_code] = []
+                if clo_poss > 0:
+                    overall_plo_map[plo_code].append(att)
+
+        # ── Grade history (per assessment) ────────────────────────────
+        for sub in subs.order_by('submitted_at'):
+            if sub.assessment.total_marks > 0:
+                pct = round(
+                    sub.total_score / sub.assessment.total_marks * 100, 1
+                )
+                grade_history.append({
+                    'label':       f"{course.code}: {sub.assessment.title[:20]}",
+                    'pct':         pct,
+                    'course_code': course.code,
+                    'date':        sub.submitted_at.strftime('%b %d'),
+                })
+
+        courses_data.append({
+            'course':       course,
+            'pct':          course_pct,
+            'grade':        grade,
+            'clo_data':     clo_data,
+            'submitted':    subs.count(),
+            'total_assess': assessments.count(),
+            'obtained':     round(course_obtained, 1),
+            'possible':     course_possible,
+        })
+
+    # ── Overall PLO attainment ────────────────────────────────────────
+    plo_summary = []
+    for plo_code, atts in sorted(overall_plo_map.items()):
+        avg = round(sum(atts) / len(atts), 1) if atts else 0
+        plo_summary.append({'code': plo_code, 'avg': avg})
+
+    overall_pct = round(
+        (total_obtained / total_possible * 100) if total_possible > 0 else 0, 1
+    )
+
+    # Bloom level aggregation across all CLOs
+    bloom_map = {}
+    for clo in overall_clo_all:
+        b = clo['bloom'].split(' ')[0]  # "Apply (L3)" → "Apply"
+        if b not in bloom_map:
+            bloom_map[b] = []
+        if clo['possible'] > 0:
+            bloom_map[b].append(clo['attainment'])
+    bloom_data = [
+        {'level': k, 'avg': round(sum(v)/len(v), 1)}
+        for k, v in bloom_map.items() if v
+    ]
+
+    import json as _json
+    return render(request, 'student/progress_navigator.html', {
+        'courses_data':    courses_data,
+        'overall_pct':     overall_pct,
+        'plo_summary':     plo_summary,
+        'grade_history':   grade_history,
+        'bloom_data':      bloom_data,
+        'overall_clo_all': overall_clo_all,
+
+        # JSON for charts
+        'courses_chart_json': _json.dumps([
+            {'label': c['course'].code, 'pct': c['pct']}
+            for c in courses_data
+        ]),
+        'plo_chart_json': _json.dumps([
+            {'label': p['code'], 'avg': p['avg']}
+            for p in plo_summary
+        ]),
+        'history_chart_json': _json.dumps(grade_history),
+        'bloom_chart_json':   _json.dumps(bloom_data),
+    })
+
+
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# তোমার evalify_app/urls.py তে student section এ এই line ADD করো
+# ══════════════════════════════════════════════════════════════════════════
+ 
+path('student/progress/', views.student_progress_navigator, name='student_progress_navigator'),
+
+
+
+
+
+
+    Student                            progress_navigator.html
+
+    {% extends 'student/base.html' %}
+{% block nav_progress %}active{% endblock %}
+
+{% block content %}
+
+<!-- ══ Page Header ══ -->
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <div class="page-title">📈 Progress Navigator</div>
+    <div class="page-sub">Your personal CLO/PLO attainment map — interactive &amp; real-time</div>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-outline btn-sm" onclick="window.print()">🖨 Export</button>
+  </div>
+</div>
+
+<!-- ══ Top Summary Cards ══ -->
+<div class="stats" style="margin-bottom:24px;">
+  <div class="stat {% if overall_pct >= 70 %}green{% elif overall_pct >= 50 %}orange{% else %}red{% endif %}">
+    <div>
+      <div class="stat-label">Overall Score</div>
+      <div class="stat-val">{{ overall_pct }}%</div>
+    </div>
+    <div class="stat-icon">🎯</div>
+  </div>
+  <div class="stat blue">
+    <div>
+      <div class="stat-label">Courses</div>
+      <div class="stat-val">{{ courses_data|length }}</div>
+    </div>
+    <div class="stat-icon">📚</div>
+  </div>
+  <div class="stat white">
+    <div>
+      <div class="stat-label" style="color:var(--gray);">CLOs Assessed</div>
+      <div class="stat-val">{{ overall_clo_all|length }}</div>
+    </div>
+    <div class="stat-icon">🎓</div>
+  </div>
+  <div class="stat white">
+    <div>
+      <div class="stat-label" style="color:var(--gray);">PLOs Mapped</div>
+      <div class="stat-val">{{ plo_summary|length }}</div>
+    </div>
+    <div class="stat-icon">🗺</div>
+  </div>
+</div>
+
+<!-- ══ Row 1: Course Scores + Grade History ══ -->
+<div class="two-col" style="margin-bottom:20px;">
+
+  <!-- Course Performance Bar Chart -->
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Course Performance</div>
+      <span style="font-size:12px;color:var(--gray);">Score per course</span>
+    </div>
+    {% if courses_data %}
+    <div style="height:220px;position:relative;">
+      <canvas id="courseBarChart"></canvas>
+    </div>
+    <!-- Course grade pills below chart -->
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;">
+      {% for c in courses_data %}
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;
+                  padding:8px 14px;text-align:center;min-width:90px;">
+        <div style="font-size:11px;font-weight:600;color:var(--teal);">{{ c.course.code }}</div>
+        <div style="font-size:22px;font-weight:800;
+          color:{% if c.pct >= 70 %}var(--green){% elif c.pct >= 50 %}var(--orange){% else %}var(--red){% endif %};">
+          {{ c.grade }}
+        </div>
+        <div style="font-size:11px;color:var(--gray);">{{ c.pct }}%</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty" style="padding:30px 0;">
+      <div class="empty-icon">📊</div>
+      <div class="empty-title">No graded data yet</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Grade History Line Chart -->
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Score Trend</div>
+      <span style="font-size:12px;color:var(--gray);">Assessment by assessment</span>
+    </div>
+    {% if grade_history %}
+    <div style="height:280px;position:relative;">
+      <canvas id="historyLineChart"></canvas>
+    </div>
+    {% else %}
+    <div class="empty" style="padding:50px 0;">
+      <div class="empty-icon">📉</div>
+      <div class="empty-title">No history yet</div>
+      <p style="font-size:13px;">Submit and get graded to see your trend.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ══ Row 2: PLO Radar + Bloom Radar ══ -->
+<div class="two-col" style="margin-bottom:20px;">
+
+  <!-- PLO Radar Chart -->
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">PLO Attainment</div>
+      <span style="font-size:12px;color:var(--gray);">Program-level outcomes</span>
+    </div>
+    {% if plo_summary %}
+    <div style="height:260px;position:relative;display:flex;justify-content:center;">
+      <canvas id="ploRadarChart" style="max-width:280px;"></canvas>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;justify-content:center;">
+      {% for p in plo_summary %}
+      <div style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                  border:1px solid var(--border);font-size:12px;">
+        <span class="tag tag-plo" style="margin:0;">{{ p.code }}</span>
+        <span style="font-weight:700;
+          color:{% if p.avg >= 70 %}var(--green){% elif p.avg >= 50 %}var(--orange){% else %}var(--red){% endif %};">
+          {{ p.avg }}%
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty" style="padding:40px 0;">
+      <div class="empty-icon">🗺</div>
+      <div class="empty-title">No PLO data yet</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Bloom's Taxonomy Polar Chart -->
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Bloom's Taxonomy</div>
+      <span style="font-size:12px;color:var(--gray);">Cognitive level breakdown</span>
+    </div>
+    {% if bloom_data %}
+    <div style="height:260px;position:relative;display:flex;justify-content:center;">
+      <canvas id="bloomPolarChart" style="max-width:280px;"></canvas>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;justify-content:center;">
+      {% for b in bloom_data %}
+      <div style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;
+                  background:#f3f4f6;color:var(--text);">
+        {{ b.level }}: {{ b.avg }}%
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty" style="padding:40px 0;">
+      <div class="empty-icon">🧠</div>
+      <div class="empty-title">No Bloom's data yet</div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ══ Row 3: Per-Course CLO Breakdown ══ -->
+{% for c in courses_data %}
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-head" style="cursor:pointer;" onclick="toggleCourse('course{{ c.course.id }}')">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:40px;height:40px;border-radius:10px;background:var(--teal-light);
+                  display:flex;align-items:center;justify-content:center;font-size:18px;">📖</div>
+      <div>
+        <div class="panel-title">{{ c.course.code }}: {{ c.course.name }}</div>
+        <div style="font-size:12px;color:var(--gray);">
+          {{ c.course.semester }} &nbsp;·&nbsp;
+          {{ c.submitted }}/{{ c.total_assess }} assessed &nbsp;·&nbsp;
+          {{ c.obtained }}/{{ c.possible }} marks
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-shrink:0;">
+      <div style="text-align:right;">
+        <div style="font-size:26px;font-weight:800;
+          color:{% if c.pct >= 70 %}var(--green){% elif c.pct >= 50 %}var(--orange){% else %}var(--red){% endif %};">
+          {{ c.grade }}
+        </div>
+        <div style="font-size:12px;color:var(--gray);">{{ c.pct }}%</div>
+      </div>
+      <span id="arrow{{ c.course.id }}" style="font-size:14px;color:var(--light);transition:transform .2s;">▼</span>
+    </div>
+  </div>
+
+  <div id="course{{ c.course.id }}" style="display:none;padding-top:16px;border-top:1px solid var(--border);margin-top:4px;">
+    {% if c.clo_data %}
+
+    <!-- CLO progress bars -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+      {% for clo in c.clo_data %}
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span class="tag tag-clo">{{ clo.code }}</span>
+            <span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;background:#fef3c7;color:#92400e;">
+              {{ clo.bloom|slice:":7" }}
+            </span>
+          </div>
+          <span style="font-size:15px;font-weight:800;
+            color:{% if clo.attainment >= 70 %}var(--green){% elif clo.attainment >= 50 %}var(--orange){% else %}var(--red){% endif %};">
+            {{ clo.attainment }}%
+          </span>
+        </div>
+        <div style="font-size:11px;color:var(--gray);margin-bottom:6px;line-height:1.4;">
+          {{ clo.description|truncatechars:55 }}
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill {% if clo.attainment < 50 %}red{% elif clo.attainment < 70 %}orange{% endif %}"
+               style="width:{{ clo.attainment }}%;transition:width 1s ease;"></div>
+        </div>
+        <div style="font-size:10px;color:var(--light);margin-top:4px;display:flex;justify-content:space-between;">
+          <span>{{ clo.obtained }}/{{ clo.possible }} marks</span>
+          <span>
+            {% for plo_code in clo.plos %}
+            <span class="tag tag-plo" style="font-size:9px;margin:0 2px;">{{ plo_code }}</span>
+            {% endfor %}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Mini CLO radar for this course -->
+    {% if c.clo_data|length >= 3 %}
+    <div style="display:flex;justify-content:center;">
+      <canvas id="radar{{ c.course.id }}" width="220" height="220"></canvas>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div style="text-align:center;padding:24px;color:var(--gray);font-size:13px;">
+      No graded assessments yet for this course.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Radar script for each course -->
+{% if c.clo_data|length >= 3 %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const ctx = document.getElementById('radar{{ c.course.id }}');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: [{% for clo in c.clo_data %}'{{ clo.code }}'{% if not forloop.last %},{% endif %}{% endfor %}],
+      datasets: [{
+        label: '{{ c.course.code }}',
+        data: [{% for clo in c.clo_data %}{{ clo.attainment }}{% if not forloop.last %},{% endif %}{% endfor %}],
+        backgroundColor: 'rgba(32,178,170,0.15)',
+        borderColor: '#20b2aa',
+        pointBackgroundColor: '#20b2aa',
+        pointRadius: 4,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: false,
+      plugins: { legend: { display: false } },
+      scales: { r: {
+        beginAtZero: true, max: 100,
+        ticks: { stepSize: 25, font: { size: 10 } },
+        grid: { color: '#e5e7eb' },
+        pointLabels: { font: { size: 11, weight: '600' } },
+      }}
+    }
+  });
+});
+</script>
+{% endif %}
+
+{% endfor %}
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+const COURSES_DATA = {{ courses_chart_json|safe }};
+const PLO_DATA     = {{ plo_chart_json|safe }};
+const HISTORY_DATA = {{ history_chart_json|safe }};
+const BLOOM_DATA   = {{ bloom_chart_json|safe }};
+
+document.addEventListener('DOMContentLoaded', function() {
+
+  // ── Course Bar Chart ─────────────────────────────────────────────────
+  const courseCtx = document.getElementById('courseBarChart');
+  if (courseCtx && COURSES_DATA.length > 0) {
+    new Chart(courseCtx, {
+      type: 'bar',
+      data: {
+        labels: COURSES_DATA.map(d => d.label),
+        datasets: [{
+          label: 'Score %',
+          data: COURSES_DATA.map(d => d.pct),
+          backgroundColor: COURSES_DATA.map(d =>
+            d.pct >= 70 ? 'rgba(16,185,129,0.8)' :
+            d.pct >= 50 ? 'rgba(245,158,11,0.8)' : 'rgba(239,68,68,0.8)'
+          ),
+          borderRadius: 6,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y}%` } }
+        },
+        scales: {
+          y: { beginAtZero: true, max: 100,
+               ticks: { callback: v => v + '%', font: { size: 11 } },
+               grid: { color: '#f3f4f6' } },
+          x: { grid: { display: false }, ticks: { font: { size: 12, weight: '600' } } }
+        }
+      }
+    });
+  }
+
+  // ── Grade History Line Chart ─────────────────────────────────────────
+  const histCtx = document.getElementById('historyLineChart');
+  if (histCtx && HISTORY_DATA.length > 0) {
+    // Color each point by course
+    const courseColors = ['#20b2aa','#3b82f6','#f59e0b','#10b981','#8b5cf6','#ef4444'];
+    const uniqueCourses = [...new Set(HISTORY_DATA.map(d => d.course_code))];
+    const pointColors = HISTORY_DATA.map(d =>
+      courseColors[uniqueCourses.indexOf(d.course_code) % courseColors.length]
+    );
+
+    new Chart(histCtx, {
+      type: 'line',
+      data: {
+        labels: HISTORY_DATA.map(d => d.date),
+        datasets: [{
+          label: 'Score %',
+          data: HISTORY_DATA.map(d => d.pct),
+          borderColor: '#20b2aa',
+          backgroundColor: 'rgba(32,178,170,0.08)',
+          pointBackgroundColor: pointColors,
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          fill: true,
+          tension: 0.4,
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: items => HISTORY_DATA[items[0].dataIndex]?.label || '',
+              label: ctx => ` Score: ${ctx.parsed.y}%`
+            }
+          }
+        },
+        scales: {
+          y: { beginAtZero: false, min: 0, max: 100,
+               ticks: { callback: v => v + '%', font: { size: 11 } },
+               grid: { color: '#f3f4f6' } },
+          x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 45 } }
+        }
+      }
+    });
+  }
+
+  // ── PLO Radar Chart ──────────────────────────────────────────────────
+  const ploCtx = document.getElementById('ploRadarChart');
+  if (ploCtx && PLO_DATA.length > 0) {
+    new Chart(ploCtx, {
+      type: 'radar',
+      data: {
+        labels: PLO_DATA.map(d => d.label),
+        datasets: [{
+          label: 'PLO Attainment',
+          data: PLO_DATA.map(d => d.avg),
+          backgroundColor: 'rgba(32,178,170,0.15)',
+          borderColor: '#20b2aa',
+          pointBackgroundColor: '#20b2aa',
+          pointRadius: 5,
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: false,
+        plugins: { legend: { display: false } },
+        scales: { r: {
+          beginAtZero: true, max: 100,
+          ticks: { stepSize: 25, font: { size: 10 } },
+          grid: { color: '#e5e7eb' },
+          pointLabels: { font: { size: 12, weight: '700' }, color: '#374151' },
+        }}
+      }
+    });
+  }
+
+  // ── Bloom Polar Area Chart ───────────────────────────────────────────
+  const bloomCtx = document.getElementById('bloomPolarChart');
+  if (bloomCtx && BLOOM_DATA.length > 0) {
+    const bloomColors = [
+      'rgba(59,130,246,0.7)',   // Remember - blue
+      'rgba(16,185,129,0.7)',   // Understand - green
+      'rgba(245,158,11,0.7)',   // Apply - yellow
+      'rgba(239,68,68,0.7)',    // Analyze - red
+      'rgba(139,92,246,0.7)',   // Evaluate - purple
+      'rgba(20,184,166,0.7)',   // Create - teal
+    ];
+    new Chart(bloomCtx, {
+      type: 'polarArea',
+      data: {
+        labels: BLOOM_DATA.map(d => d.level),
+        datasets: [{
+          data: BLOOM_DATA.map(d => d.avg),
+          backgroundColor: bloomColors.slice(0, BLOOM_DATA.length),
+          borderWidth: 1,
+          borderColor: '#fff',
+        }]
+      },
+      options: {
+        responsive: false,
+        plugins: {
+          legend: { position: 'right', labels: { font: { size: 11 }, padding: 8 } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed.r}%` } }
+        },
+        scales: { r: {
+          beginAtZero: true, max: 100,
+          ticks: { stepSize: 25, font: { size: 9 } },
+          grid: { color: '#e5e7eb' },
+        }}
+      }
+    });
+  }
+
+}); // DOMContentLoaded
+
+// ── Course accordion toggle ──────────────────────────────────────────────
+function toggleCourse(id) {
+  const body  = document.getElementById(id);
+  const arrow = document.getElementById('arrow' + id.replace('course', ''));
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+</script>
+
+<style>
+@media print {
+  .sidebar, .footer-link, button, .btn { display: none !important; }
+  .main { margin-left: 0 !important; }
+  .panel { break-inside: avoid; }
+}
+@media (max-width: 768px) {
+  .two-col { grid-template-columns: 1fr !important; }
+  .stats   { grid-template-columns: repeat(2,1fr) !important; }
+}
+</style>
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# student/base.html তে Dashboard nav এর ঠিক পরে এই line ADD করো
+# ══════════════════════════════════════════════════════════════════════════
+ 
+    <a href="{% url 'student_progress_navigator' %}" class="{% block nav_progress %}{% endblock %}">
+      <span class="nav-icon">📈</span>
+      <span>Progress</span>
+    </a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    

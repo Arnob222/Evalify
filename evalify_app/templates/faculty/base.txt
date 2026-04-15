@@ -1,0 +1,2471 @@
+evalify_app/
+├── models.py              ← শেষে ADD করো (models_past_paper.py)
+├── views.py               ← শেষে ADD করো + import এ PastPaper, PastPaperQuestion
+├── urls.py                ← শেষে ADD করো (urls_question_bank.py)
+│
+├── migrations/
+│   └── 0009_past_paper.py ← নতুন file বানাও ⬅️
+│
+└── templates/
+    ├── faculty/
+    │   └── question_bank.html   ← নতুন file বানাও ⬅️
+    └── student/
+        ├── question_bank.html   ← নতুন file বানাও ⬅️
+        └── view_paper.html      ← নতুন file বানাও ⬅️
+
+
+
+
+0009_past_paper.py
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('evalify_app', '0008_grace_period'),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='PastPaper',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                ('title',           models.CharField(max_length=200)),
+                ('course_code',     models.CharField(max_length=20)),
+                ('course_name',     models.CharField(max_length=200)),
+                ('semester',        models.CharField(max_length=50)),
+                ('exam_type',       models.CharField(max_length=20, choices=[
+                    ('mid',        'Mid Exam'),
+                    ('final',      'Final Exam'),
+                    ('ct',         'Class Test'),
+                    ('quiz',       'Quiz'),
+                    ('assignment', 'Assignment'),
+                ])),
+                ('total_marks',     models.IntegerField(default=0)),
+                ('duration_mins',   models.IntegerField(default=0, help_text='Exam duration in minutes')),
+                ('description',     models.TextField(blank=True)),
+                # Privacy
+                ('is_public',       models.BooleanField(default=False,
+                    help_text='Public = all enrolled students can see. False = only specific courses.')),
+                ('allowed_courses', models.ManyToManyField('Course', blank=True, related_name='past_papers',
+                    help_text='If not public, only students in these courses can access.')),
+                # Meta
+                ('uploaded_by',     models.ForeignKey(settings.AUTH_USER_MODEL,
+                    on_delete=django.db.models.deletion.CASCADE, related_name='past_papers')),
+                ('uploaded_at',     models.DateTimeField(auto_now_add=True)),
+            ],
+            options={'ordering': ['-uploaded_at']},
+        ),
+        migrations.CreateModel(
+            name='PastPaperQuestion',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                ('paper',       models.ForeignKey('PastPaper', on_delete=django.db.models.deletion.CASCADE,
+                    related_name='questions')),
+                ('order',       models.IntegerField(default=1)),
+                ('text',        models.TextField()),
+                ('marks',       models.IntegerField(default=0)),
+                ('answer_hint', models.TextField(blank=True,
+                    help_text='Optional model answer or hint (faculty controlled)')),
+                ('show_hint',   models.BooleanField(default=False,
+                    help_text='Whether students can see the hint/answer')),
+                ('topic_tag',   models.CharField(max_length=100, blank=True,
+                    help_text='e.g. Sorting, Recursion, Trees')),
+                ('difficulty',  models.CharField(max_length=10, blank=True, choices=[
+                    ('easy',   'Easy'),
+                    ('medium', 'Medium'),
+                    ('hard',   'Hard'),
+                ])),
+            ],
+            options={'ordering': ['order']},
+        ),
+
+
+
+
+
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# তোমার models.py এর একদম শেষে এই ২টা class ADD করো
+# ══════════════════════════════════════════════════════════════════════════
+
+class PastPaper(models.Model):
+    EXAM_TYPE_CHOICES = [
+        ('mid',        'Mid Exam'),
+        ('final',      'Final Exam'),
+        ('ct',         'Class Test'),
+        ('quiz',       'Quiz'),
+        ('assignment', 'Assignment'),
+    ]
+
+    title           = models.CharField(max_length=200)
+    course_code     = models.CharField(max_length=20)
+    course_name     = models.CharField(max_length=200)
+    semester        = models.CharField(max_length=50)
+    exam_type       = models.CharField(max_length=20, choices=EXAM_TYPE_CHOICES)
+    total_marks     = models.IntegerField(default=0)
+    duration_mins   = models.IntegerField(default=0)
+    description     = models.TextField(blank=True)
+
+    # ── Privacy ──────────────────────────────────────────────────────────
+    is_public       = models.BooleanField(default=False,
+        help_text='True = all enrolled students can see.')
+    allowed_courses = models.ManyToManyField('Course', blank=True,
+        related_name='past_papers',
+        help_text='If not public, only students in these courses can access.')
+
+    uploaded_by     = models.ForeignKey(User, on_delete=models.CASCADE,
+        related_name='past_papers')
+    uploaded_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"{self.course_code} | {self.semester} | {self.get_exam_type_display()}"
+
+    def is_accessible_by(self, student):
+        """Check if a student can access this paper."""
+        if self.is_public:
+            return True
+        # Check if student is enrolled in any allowed course
+        from .models import Enrollment
+        enrolled_ids = Enrollment.objects.filter(
+            student=student
+        ).values_list('course_id', flat=True)
+        return self.allowed_courses.filter(id__in=enrolled_ids).exists()
+
+
+class PastPaperQuestion(models.Model):
+    DIFFICULTY_CHOICES = [
+        ('easy',   'Easy'),
+        ('medium', 'Medium'),
+        ('hard',   'Hard'),
+    ]
+
+    paper       = models.ForeignKey(PastPaper, on_delete=models.CASCADE, related_name='questions')
+    order       = models.IntegerField(default=1)
+    text        = models.TextField()
+    marks       = models.IntegerField(default=0)
+    answer_hint = models.TextField(blank=True)
+    show_hint   = models.BooleanField(default=False)
+    topic_tag   = models.CharField(max_length=100, blank=True)
+    difficulty  = models.CharField(max_length=10, blank=True, choices=DIFFICULTY_CHOICES)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"Q{self.order} — {self.paper}"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# views.py এর শেষে এই সব functions ADD করো
+# এবং top এ import এ PastPaper, PastPaperQuestion ADD করো:
+#
+# from .models import (..., PastPaper, PastPaperQuestion)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+# ══════════════════════════════════════
+# FACULTY VIEWS
+# ══════════════════════════════════════
+
+@faculty_required
+def faculty_question_bank(request):
+    """Faculty — list all past papers they uploaded."""
+    papers = PastPaper.objects.filter(
+        uploaded_by=request.user
+    ).prefetch_related('questions', 'allowed_courses')
+
+    courses = Course.objects.filter(faculty=request.user)
+    return render(request, 'faculty/question_bank.html', {
+        'papers':  papers,
+        'courses': courses,
+    })
+
+
+@faculty_required
+def create_past_paper(request):
+    """Create a new past paper with questions."""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+
+        paper = PastPaper.objects.create(
+            title         = data['title'],
+            course_code   = data['course_code'],
+            course_name   = data['course_name'],
+            semester      = data['semester'],
+            exam_type     = data['exam_type'],
+            total_marks   = int(data.get('total_marks', 0)),
+            duration_mins = int(data.get('duration_mins', 0)),
+            description   = data.get('description', ''),
+            is_public     = data.get('is_public', False),
+            uploaded_by   = request.user,
+        )
+
+        # Allowed courses (if not public)
+        course_ids = data.get('allowed_course_ids', [])
+        if course_ids:
+            paper.allowed_courses.set(
+                Course.objects.filter(id__in=course_ids, faculty=request.user)
+            )
+
+        # Questions
+        total = 0
+        for i, q in enumerate(data.get('questions', []), 1):
+            PastPaperQuestion.objects.create(
+                paper       = paper,
+                order       = i,
+                text        = q['text'],
+                marks       = int(q.get('marks', 0)),
+                answer_hint = q.get('answer_hint', ''),
+                show_hint   = q.get('show_hint', False),
+                topic_tag   = q.get('topic_tag', ''),
+                difficulty  = q.get('difficulty', ''),
+            )
+            total += int(q.get('marks', 0))
+
+        if total > 0:
+            paper.total_marks = total
+            paper.save(update_fields=['total_marks'])
+
+        return JsonResponse({'success': True, 'id': paper.id})
+    return JsonResponse({'error': 'POST required'}, status=400)
+
+
+@faculty_required
+def delete_past_paper(request, paper_id):
+    paper = get_object_or_404(PastPaper, id=paper_id, uploaded_by=request.user)
+    paper.delete()
+    return JsonResponse({'success': True})
+
+
+@faculty_required
+def toggle_paper_visibility(request, paper_id):
+    """Toggle is_public on/off."""
+    paper = get_object_or_404(PastPaper, id=paper_id, uploaded_by=request.user)
+    paper.is_public = not paper.is_public
+    paper.save(update_fields=['is_public'])
+    return JsonResponse({'success': True, 'is_public': paper.is_public})
+
+
+@faculty_required
+def toggle_hint_visibility(request, question_id):
+    """Toggle show_hint for a single question."""
+    q = get_object_or_404(PastPaperQuestion, id=question_id, paper__uploaded_by=request.user)
+    q.show_hint = not q.show_hint
+    q.save(update_fields=['show_hint'])
+    return JsonResponse({'success': True, 'show_hint': q.show_hint})
+
+
+@faculty_required
+def get_paper_detail(request, paper_id):
+    """Return full paper + questions as JSON (for edit/preview modal)."""
+    paper = get_object_or_404(PastPaper, id=paper_id, uploaded_by=request.user)
+    questions = [{
+        'id':          q.id,
+        'order':       q.order,
+        'text':        q.text,
+        'marks':       q.marks,
+        'answer_hint': q.answer_hint,
+        'show_hint':   q.show_hint,
+        'topic_tag':   q.topic_tag,
+        'difficulty':  q.difficulty,
+    } for q in paper.questions.all()]
+    return JsonResponse({
+        'id':             paper.id,
+        'title':          paper.title,
+        'course_code':    paper.course_code,
+        'course_name':    paper.course_name,
+        'semester':       paper.semester,
+        'exam_type':      paper.exam_type,
+        'total_marks':    paper.total_marks,
+        'duration_mins':  paper.duration_mins,
+        'description':    paper.description,
+        'is_public':      paper.is_public,
+        'questions':      questions,
+    })
+
+
+# ══════════════════════════════════════
+# STUDENT VIEWS
+# ══════════════════════════════════════
+
+@student_required
+def student_question_bank(request):
+    """
+    Student — browse past papers.
+    Permission check: student must be enrolled in an allowed course,
+    OR paper must be is_public=True.
+    """
+    # Get all courses student is enrolled in
+    enrolled_course_ids = Enrollment.objects.filter(
+        student=request.user
+    ).values_list('course_id', flat=True)
+
+    # Papers accessible: public OR allowed_courses overlaps with enrollments
+    from django.db.models import Q
+    accessible_papers = PastPaper.objects.filter(
+        Q(is_public=True) |
+        Q(allowed_courses__id__in=enrolled_course_ids)
+    ).distinct().prefetch_related('questions')
+
+    # ── Search & Filter ────────────────────────────────────────────────
+    search      = request.GET.get('q', '').strip()
+    exam_type   = request.GET.get('type', '')
+    semester    = request.GET.get('semester', '')
+    course_code = request.GET.get('course', '')
+    difficulty  = request.GET.get('difficulty', '')
+
+    if search:
+        accessible_papers = accessible_papers.filter(
+            Q(title__icontains=search)       |
+            Q(course_code__icontains=search) |
+            Q(course_name__icontains=search) |
+            Q(description__icontains=search) |
+            Q(questions__text__icontains=search) |
+            Q(questions__topic_tag__icontains=search)
+        ).distinct()
+
+    if exam_type:
+        accessible_papers = accessible_papers.filter(exam_type=exam_type)
+
+    if semester:
+        accessible_papers = accessible_papers.filter(semester__icontains=semester)
+
+    if course_code:
+        accessible_papers = accessible_papers.filter(course_code__icontains=course_code)
+
+    if difficulty:
+        accessible_papers = accessible_papers.filter(questions__difficulty=difficulty).distinct()
+
+    # Distinct course codes and semesters for filter dropdowns
+    all_papers  = PastPaper.objects.filter(
+        Q(is_public=True) | Q(allowed_courses__id__in=enrolled_course_ids)
+    ).distinct()
+
+    course_codes = all_papers.values_list('course_code', flat=True).distinct()
+    semesters    = all_papers.values_list('semester', flat=True).distinct()
+
+    return render(request, 'student/question_bank.html', {
+        'papers':       accessible_papers,
+        'course_codes': sorted(set(course_codes)),
+        'semesters':    sorted(set(semesters), reverse=True),
+        'search':       search,
+        'exam_type':    exam_type,
+        'semester':     semester,
+        'course_code':  course_code,
+        'difficulty':   difficulty,
+        'total_count':  accessible_papers.count(),
+    })
+
+
+@student_required
+def student_view_paper(request, paper_id):
+    """
+    Student — view a single past paper with all questions.
+    Permission check enforced here too.
+    """
+    enrolled_course_ids = Enrollment.objects.filter(
+        student=request.user
+    ).values_list('course_id', flat=True)
+
+    paper = get_object_or_404(PastPaper, id=paper_id)
+
+    # ── Permission check ──────────────────────────────────────────────
+    if not paper.is_public:
+        has_access = paper.allowed_courses.filter(id__in=enrolled_course_ids).exists()
+        if not has_access:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("You don't have access to this paper.")
+
+    questions = paper.questions.all()
+
+    return render(request, 'student/view_paper.html', {
+        'paper':     paper,
+        'questions': questions,
+    })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # ══════════════════════════════════════════════════════════════════════════
+# তোমার evalify_app/urls.py তে শেষ student path এর পরে এই lines ADD করো
+# ══════════════════════════════════════════════════════════════════════════
+
+    # Question Bank — Faculty
+    path('faculty/question-bank/',                         views.faculty_question_bank,    name='faculty_question_bank'),
+    path('faculty/question-bank/create/',                  views.create_past_paper,        name='create_past_paper'),
+    path('faculty/question-bank/<int:paper_id>/delete/',   views.delete_past_paper,        name='delete_past_paper'),
+    path('faculty/question-bank/<int:paper_id>/toggle/',   views.toggle_paper_visibility,  name='toggle_paper_visibility'),
+    path('faculty/question-bank/<int:paper_id>/detail/',   views.get_paper_detail,         name='get_paper_detail'),
+    path('faculty/question-bank/hint/<int:question_id>/',  views.toggle_hint_visibility,   name='toggle_hint_visibility'),
+
+    # Question Bank — Student
+    path('student/question-bank/',                         views.student_question_bank,    name='student_question_bank'),
+    path('student/question-bank/<int:paper_id>/',          views.student_view_paper,       name='student_view_paper'),
+
+
+
+
+
+
+
+
+    faculty               question_bank.html
+
+
+{% extends 'faculty/base.html' %}
+{% block nav_question_bank %}active{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;">
+  <div>
+    <div class="page-title">Question Bank</div>
+    <div class="page-sub">Upload previous semester papers for student access</div>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('createPaperModal')">+ Upload Past Paper</button>
+</div>
+
+{% if papers %}
+{% for paper in papers %}
+<div class="accordion-item" id="paper-{{ paper.id }}">
+  <div class="accordion-trigger" style="padding:16px 20px;">
+    <div class="list-icon" style="background:
+      {% if paper.exam_type == 'mid' %}#fde68a{% elif paper.exam_type == 'final' %}#fee2e2
+      {% elif paper.exam_type == 'quiz' %}#fef9c3{% elif paper.exam_type == 'ct' %}#d1fae5
+      {% else %}#dbeafe{% endif %};font-size:18px;">
+      {% if paper.exam_type == 'mid' %}📖{% elif paper.exam_type == 'final' %}🎓
+      {% elif paper.exam_type == 'quiz' %}❓{% elif paper.exam_type == 'ct' %}✏️{% else %}📝{% endif %}
+    </div>
+    <div class="list-body">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div class="list-title">{{ paper.title }}</div>
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;
+          background:{% if paper.is_public %}#dcfce7{% else %}#fef3c7{% endif %};
+          color:{% if paper.is_public %}#166534{% else %}#92400e{% endif %};">
+          {% if paper.is_public %}🌐 Public{% else %}🔒 Restricted{% endif %}
+        </span>
+      </div>
+      <div class="list-meta">
+        {{ paper.course_code }}: {{ paper.course_name }} &nbsp;·&nbsp;
+        {{ paper.semester }} &nbsp;·&nbsp;
+        {{ paper.get_exam_type_display }} &nbsp;·&nbsp;
+        {{ paper.total_marks }} marks &nbsp;·&nbsp;
+        {{ paper.questions.count }} questions
+        {% if paper.duration_mins %}&nbsp;·&nbsp; {{ paper.duration_mins }} mins{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+      <button class="btn btn-outline btn-sm"
+              onclick="event.stopPropagation();toggleVisibility({{ paper.id }}, this)"
+              id="vis-btn-{{ paper.id }}"
+              style="{% if paper.is_public %}color:var(--teal);border-color:var(--teal);{% else %}color:var(--orange);border-color:var(--orange);{% endif %}">
+        {% if paper.is_public %}👁 Public{% else %}🔒 Restricted{% endif %}
+      </button>
+      <button class="btn btn-outline btn-sm"
+              style="color:var(--red);"
+              onclick="event.stopPropagation();deletePaper({{ paper.id }})">🗑</button>
+      <span class="accordion-arrow">▼</span>
+    </div>
+  </div>
+
+  <div class="accordion-body">
+    {% if paper.description %}
+    <p style="font-size:13px;color:var(--gray);margin-bottom:14px;">{{ paper.description }}</p>
+    {% endif %}
+
+    {% if not paper.is_public %}
+    <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;
+                padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:12px;">
+      🔒 Accessible to students enrolled in:
+      {% for c in paper.allowed_courses.all %}
+        <strong>{{ c.code }}</strong>{% if not forloop.last %}, {% endif %}
+      {% empty %}
+        <em>No courses selected — no students can see this</em>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Questions list -->
+    {% for q in paper.questions.all %}
+    <div style="background:#fff;border:1px solid var(--border);border-radius:8px;
+                padding:14px 16px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+            <span style="font-size:12px;font-weight:700;color:var(--teal);">Q{{ q.order }}</span>
+            {% if q.marks %}<span style="font-size:11px;color:var(--gray);">{{ q.marks }} marks</span>{% endif %}
+            {% if q.topic_tag %}<span class="tag tag-clo">{{ q.topic_tag }}</span>{% endif %}
+            {% if q.difficulty %}
+            <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;
+              background:{% if q.difficulty == 'easy' %}#d1fae5{% elif q.difficulty == 'medium' %}#fef3c7{% else %}#fee2e2{% endif %};
+              color:{% if q.difficulty == 'easy' %}#065f46{% elif q.difficulty == 'medium' %}#92400e{% else %}#991b1b{% endif %};">
+              {{ q.get_difficulty_display }}
+            </span>
+            {% endif %}
+          </div>
+          <div style="font-size:13px;color:var(--text);">{{ q.text }}</div>
+          {% if q.answer_hint %}
+          <div style="margin-top:8px;padding:8px 12px;
+                      background:{% if q.show_hint %}#f0fdf4{% else %}#f8fafc{% endif %};
+                      border:1px solid {% if q.show_hint %}#bbf7d0{% else %}var(--border){% endif %};
+                      border-radius:6px;font-size:12px;
+                      color:{% if q.show_hint %}#166534{% else %}var(--gray){% endif %};">
+            💡 <strong>Hint/Answer:</strong> {{ q.answer_hint }}
+            <span style="font-size:10px;margin-left:6px;opacity:.7;">
+              ({% if q.show_hint %}visible to students{% else %}hidden from students{% endif %})
+            </span>
+          </div>
+          {% endif %}
+        </div>
+        <div style="flex-shrink:0;">
+          {% if q.answer_hint %}
+          <button class="btn btn-outline btn-sm" id="hint-btn-{{ q.id }}"
+                  onclick="toggleHint({{ q.id }}, this)"
+                  style="font-size:11px;{% if q.show_hint %}color:var(--teal);{% else %}color:var(--gray);{% endif %}">
+            {% if q.show_hint %}👁 Hint Shown{% else %}🚫 Hint Hidden{% endif %}
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+{% else %}
+<div class="empty">
+  <div class="empty-icon">📚</div>
+  <div class="empty-title">No past papers yet</div>
+  <p style="font-size:13px;">Upload previous semester papers so students can practice.</p>
+</div>
+{% endif %}
+
+
+<!-- ══ Create Paper Modal ══ -->
+<div class="modal-overlay" id="createPaperModal">
+  <div class="modal" style="max-width:700px;">
+    <div class="modal-head">
+      <div class="modal-title">Upload Past Paper</div>
+      <button class="modal-close" onclick="closeModal('createPaperModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;
+                  padding:16px;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:12px;">Paper Info</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Course Code *</label>
+            <input class="form-control" id="pCode" placeholder="e.g. CS-301">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Exam Type *</label>
+            <select class="form-control" id="pType">
+              <option value="mid">Mid Exam</option>
+              <option value="final">Final Exam</option>
+              <option value="ct">Class Test</option>
+              <option value="quiz">Quiz</option>
+              <option value="assignment">Assignment</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Course Name *</label>
+          <input class="form-control" id="pCourseName" placeholder="e.g. Data Structures & Algorithms">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Title *</label>
+            <input class="form-control" id="pTitle" placeholder="e.g. Mid Exam — Fall 2024">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Semester *</label>
+            <input class="form-control" id="pSemester" placeholder="e.g. Fall 2024">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Total Marks</label>
+            <input class="form-control" id="pMarks" type="number" min="0" value="0" placeholder="Auto from questions">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Duration (minutes)</label>
+            <input class="form-control" id="pDuration" type="number" min="0" value="0" placeholder="0 = not set">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description / Notes</label>
+          <textarea class="form-control" id="pDesc" rows="2" placeholder="Optional notes about this paper..."></textarea>
+        </div>
+      </div>
+
+      <!-- Privacy -->
+      <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;
+                  padding:16px;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:10px;">🔒 Access Control</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+            <input type="checkbox" id="pIsPublic" style="accent-color:var(--teal);width:16px;height:16px;"
+                   onchange="toggleCourseAccess()">
+            <span>Public — all enrolled students can access</span>
+          </label>
+        </div>
+        <div id="courseAccessSection">
+          <label class="form-label">Restrict to specific courses:</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:#fff;
+                      border:1px solid var(--border);border-radius:6px;">
+            {% for c in courses %}
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;">
+              <input type="checkbox" class="course-access-check" value="{{ c.id }}"
+                     style="accent-color:var(--teal);">
+              <span class="tag tag-clo" style="margin:0;">{{ c.code }}</span>
+              <span style="font-size:11px;color:var(--gray);">{{ c.name|truncatechars:25 }}</span>
+            </label>
+            {% empty %}
+            <span style="font-size:13px;color:var(--gray);">No courses yet. Create courses first.</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Questions -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:700;color:var(--teal);">
+          Questions (<span id="qBankCount">0</span>)
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="addBankQuestion()">+ Add Question</button>
+      </div>
+      <div id="bankQContainer">
+        <div style="text-align:center;font-size:13px;color:var(--gray);padding:16px;
+                    background:#f9fafb;border-radius:8px;border:1px dashed var(--border);">
+          No questions added yet. Click "+ Add Question" to start.
+        </div>
+      </div>
+
+      <div id="createPaperError" style="color:var(--red);font-size:13px;display:none;
+           margin-top:8px;padding:8px 12px;background:#fee2e2;border-radius:6px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary btn-full" onclick="submitPaper()">Upload Past Paper</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+let bankQuestions = [];
+
+function toggleCourseAccess() {
+  const pub = document.getElementById('pIsPublic').checked;
+  document.getElementById('courseAccessSection').style.display = pub ? 'none' : 'block';
+}
+
+function addBankQuestion() {
+  const idx = bankQuestions.length;
+  bankQuestions.push({ text:'', marks:5, answer_hint:'', show_hint:false, topic_tag:'', difficulty:'' });
+  renderBankQuestions();
+}
+
+function renderBankQuestions() {
+  const container = document.getElementById('bankQContainer');
+  document.getElementById('qBankCount').textContent = bankQuestions.length;
+  if (bankQuestions.length === 0) {
+    container.innerHTML = '<div style="text-align:center;font-size:13px;color:var(--gray);padding:16px;background:#f9fafb;border-radius:8px;border:1px dashed var(--border);">No questions added yet.</div>';
+    return;
+  }
+  container.innerHTML = bankQuestions.map((q, i) => `
+    <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:12px;font-weight:700;color:var(--teal);">Q${i+1}</span>
+        <button onclick="removeBankQ(${i})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;">🗑</button>
+      </div>
+      <textarea class="form-control" style="margin-bottom:8px;" placeholder="Question text *"
+                oninput="bankQuestions[${i}].text=this.value">${q.text}</textarea>
+      <div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div>
+          <label class="form-label" style="font-size:11px;">Marks</label>
+          <input type="number" class="form-control" value="${q.marks}" min="0"
+                 onchange="bankQuestions[${i}].marks=parseInt(this.value)||0">
+        </div>
+        <div>
+          <label class="form-label" style="font-size:11px;">Topic Tag</label>
+          <input type="text" class="form-control" value="${q.topic_tag}" placeholder="e.g. Sorting"
+                 oninput="bankQuestions[${i}].topic_tag=this.value">
+        </div>
+        <div>
+          <label class="form-label" style="font-size:11px;">Difficulty</label>
+          <select class="form-control" onchange="bankQuestions[${i}].difficulty=this.value">
+            <option value="" ${!q.difficulty?'selected':''}>—</option>
+            <option value="easy" ${q.difficulty==='easy'?'selected':''}>Easy</option>
+            <option value="medium" ${q.difficulty==='medium'?'selected':''}>Medium</option>
+            <option value="hard" ${q.difficulty==='hard'?'selected':''}>Hard</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="form-label" style="font-size:11px;">Answer Hint / Model Answer (optional)</label>
+        <textarea class="form-control" style="min-height:50px;" placeholder="Model answer or hint for students..."
+                  oninput="bankQuestions[${i}].answer_hint=this.value">${q.answer_hint}</textarea>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;cursor:pointer;">
+          <input type="checkbox" ${q.show_hint?'checked':''} style="accent-color:var(--teal);"
+                 onchange="bankQuestions[${i}].show_hint=this.checked">
+          Show hint to students
+        </label>
+      </div>
+    </div>
+  `).join('');
+}
+
+function removeBankQ(i) { bankQuestions.splice(i,1); renderBankQuestions(); }
+
+async function submitPaper() {
+  const errEl = document.getElementById('createPaperError');
+  const code  = document.getElementById('pCode').value.trim();
+  const title = document.getElementById('pTitle').value.trim();
+  const sem   = document.getElementById('pSemester').value.trim();
+  const cname = document.getElementById('pCourseName').value.trim();
+  errEl.style.display = 'none';
+
+  if (!code || !title || !sem || !cname) {
+    errEl.textContent = 'Course code, name, title and semester are required.';
+    errEl.style.display = 'block'; return;
+  }
+  if (bankQuestions.length === 0) {
+    errEl.textContent = 'Add at least one question.';
+    errEl.style.display = 'block'; return;
+  }
+  if (bankQuestions.some(q => !q.text.trim())) {
+    errEl.textContent = 'All question texts are required.';
+    errEl.style.display = 'block'; return;
+  }
+
+  const isPublic     = document.getElementById('pIsPublic').checked;
+  const courseIds    = [...document.querySelectorAll('.course-access-check:checked')].map(c => parseInt(c.value));
+
+  const data = {
+    title, course_code: code, course_name: cname,
+    semester: sem,
+    exam_type:         document.getElementById('pType').value,
+    total_marks:       parseInt(document.getElementById('pMarks').value) || 0,
+    duration_mins:     parseInt(document.getElementById('pDuration').value) || 0,
+    description:       document.getElementById('pDesc').value,
+    is_public:         isPublic,
+    allowed_course_ids: isPublic ? [] : courseIds,
+    questions:         bankQuestions,
+  };
+
+  const res = await apiPost("{% url 'create_past_paper' %}", data);
+  if (res.success) location.reload();
+  else { errEl.textContent = res.error || 'Error uploading.'; errEl.style.display = 'block'; }
+}
+
+async function deletePaper(id) {
+  if (!confirm('Delete this past paper?')) return;
+  const res = await apiPost(`/faculty/question-bank/${id}/delete/`, {});
+  if (res.success) {
+    const el = document.getElementById(`paper-${id}`);
+    el.style.opacity = '0'; el.style.transition = 'opacity .3s';
+    setTimeout(() => el.remove(), 300);
+  }
+}
+
+async function toggleVisibility(id, btn) {
+  const res = await apiPost(`/faculty/question-bank/${id}/toggle/`, {});
+  if (res.success) {
+    btn.textContent = res.is_public ? '👁 Public' : '🔒 Restricted';
+    btn.style.color = res.is_public ? 'var(--teal)' : 'var(--orange)';
+    btn.style.borderColor = res.is_public ? 'var(--teal)' : 'var(--orange)';
+  }
+}
+
+async function toggleHint(id, btn) {
+  const res = await apiPost(`/faculty/question-bank/hint/${id}/`, {});
+  if (res.success) {
+    btn.textContent = res.show_hint ? '👁 Hint Shown' : '🚫 Hint Hidden';
+    btn.style.color = res.show_hint ? 'var(--teal)' : 'var(--gray)';
+  }
+}
+</script>
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    Student                           question_bank.html
+
+{% extends 'student/base.html' %}
+{% block nav_question_bank %}active{% endblock %}
+
+{% block content %}
+<div class="page-title">Question Bank</div>
+<div class="page-sub">Browse previous semester papers — {{ total_count }} paper{{ total_count|pluralize }} available</div>
+
+<!-- ── Search & Filter Bar ── -->
+<form method="get" style="margin-bottom:20px;">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+
+    <div style="flex:1;min-width:200px;position:relative;">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--light);">🔍</span>
+      <input type="text" name="q" value="{{ search }}" class="form-control"
+             style="padding-left:32px;" placeholder="Search questions, topics, course...">
+    </div>
+
+    <select name="course" class="form-control" style="width:140px;">
+      <option value="">All Courses</option>
+      {% for cc in course_codes %}
+      <option value="{{ cc }}" {% if course_code == cc %}selected{% endif %}>{{ cc }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="type" class="form-control" style="width:140px;">
+      <option value="">All Types</option>
+      <option value="mid"        {% if exam_type == 'mid' %}selected{% endif %}>Mid Exam</option>
+      <option value="final"      {% if exam_type == 'final' %}selected{% endif %}>Final Exam</option>
+      <option value="ct"         {% if exam_type == 'ct' %}selected{% endif %}>Class Test</option>
+      <option value="quiz"       {% if exam_type == 'quiz' %}selected{% endif %}>Quiz</option>
+      <option value="assignment" {% if exam_type == 'assignment' %}selected{% endif %}>Assignment</option>
+    </select>
+
+    <select name="semester" class="form-control" style="width:140px;">
+      <option value="">All Semesters</option>
+      {% for s in semesters %}
+      <option value="{{ s }}" {% if semester == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="difficulty" class="form-control" style="width:130px;">
+      <option value="">Any Difficulty</option>
+      <option value="easy"   {% if difficulty == 'easy' %}selected{% endif %}>Easy</option>
+      <option value="medium" {% if difficulty == 'medium' %}selected{% endif %}>Medium</option>
+      <option value="hard"   {% if difficulty == 'hard' %}selected{% endif %}>Hard</option>
+    </select>
+
+    <button type="submit" class="btn btn-primary">Filter</button>
+    {% if search or exam_type or semester or course_code or difficulty %}
+    <a href="{% url 'student_question_bank' %}" class="btn btn-outline">✕ Clear</a>
+    {% endif %}
+  </div>
+</form>
+
+{% if papers %}
+{% for paper in papers %}
+<div class="list-item" style="cursor:pointer;"
+     onclick="window.location.href='{% url 'student_view_paper' paper.id %}'">
+  <div class="list-icon" style="font-size:20px;
+    background:{% if paper.exam_type == 'mid' %}#fde68a{% elif paper.exam_type == 'final' %}#fee2e2
+               {% elif paper.exam_type == 'quiz' %}#fef9c3{% elif paper.exam_type == 'ct' %}#d1fae5
+               {% else %}#dbeafe{% endif %};">
+    {% if paper.exam_type == 'mid' %}📖{% elif paper.exam_type == 'final' %}🎓
+    {% elif paper.exam_type == 'quiz' %}❓{% elif paper.exam_type == 'ct' %}✏️{% else %}📝{% endif %}
+  </div>
+  <div class="list-body">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">
+      <div class="list-title">{{ paper.title }}</div>
+      <span class="tag" style="background:
+        {% if paper.exam_type == 'mid' %}#fde68a;color:#92400e
+        {% elif paper.exam_type == 'final' %}#fee2e2;color:#991b1b
+        {% elif paper.exam_type == 'quiz' %}#fef9c3;color:#854d0e
+        {% elif paper.exam_type == 'ct' %}#d1fae5;color:#065f46
+        {% else %}#dbeafe;color:#1d4ed8{% endif %}">
+        {{ paper.get_exam_type_display }}
+      </span>
+    </div>
+    <div class="list-meta">
+      <strong>{{ paper.course_code }}</strong>: {{ paper.course_name }}
+      &nbsp;·&nbsp; {{ paper.semester }}
+      &nbsp;·&nbsp; {{ paper.total_marks }} marks
+      &nbsp;·&nbsp; {{ paper.questions.count }} questions
+      {% if paper.duration_mins %}&nbsp;·&nbsp; {{ paper.duration_mins }} mins{% endif %}
+    </div>
+    {% if paper.description %}
+    <div style="font-size:12px;color:var(--gray);margin-top:3px;">{{ paper.description|truncatechars:100 }}</div>
+    {% endif %}
+    <!-- Topic tags from questions -->
+    <div style="margin-top:5px;">
+      {% for q in paper.questions.all %}
+        {% if q.topic_tag %}
+        <span class="tag" style="background:#f3f4f6;color:#374151;font-size:10px;">{{ q.topic_tag }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <div style="flex-shrink:0;color:var(--teal);font-size:18px;">›</div>
+</div>
+{% endfor %}
+
+{% else %}
+<div class="empty">
+  <div class="empty-icon">📚</div>
+  <div class="empty-title">
+    {% if search or exam_type or semester or course_code or difficulty %}
+    No papers match your filters
+    {% else %}
+    No past papers available yet
+    {% endif %}
+  </div>
+  <p style="font-size:13px;">
+    {% if search or exam_type or semester or course_code or difficulty %}
+    Try different search terms or clear the filters.
+    {% else %}
+    Past papers will appear here once your faculty uploads them.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+student                         view_paper.html
+
+
+{% extends 'student/base.html' %}
+{% block nav_question_bank %}active{% endblock %}
+
+{% block content %}
+
+<!-- Breadcrumb -->
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:22px;font-size:13px;">
+  <a href="{% url 'student_question_bank' %}"
+     style="color:var(--gray);text-decoration:none;padding:5px 12px;border:1px solid var(--border);
+            border-radius:6px;background:#fff;"
+     onmouseover="this.style.color='var(--teal)';this.style.borderColor='var(--teal)';"
+     onmouseout="this.style.color='var(--gray)';this.style.borderColor='var(--border)';">← Back</a>
+  <span style="color:var(--light);">/</span>
+  <span style="color:var(--gray);">Question Bank</span>
+  <span style="color:var(--light);">/</span>
+  <span style="font-weight:600;">{{ paper.title }}</span>
+</div>
+
+<!-- Paper Header -->
+<div style="background:#fff;border:1px solid var(--border);border-radius:12px;
+            padding:22px 24px;margin-bottom:24px;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:22px;font-weight:800;margin-bottom:6px;">{{ paper.title }}</div>
+      <div style="font-size:14px;color:var(--gray);display:flex;gap:16px;flex-wrap:wrap;">
+        <span>📖 <strong>{{ paper.course_code }}</strong>: {{ paper.course_name }}</span>
+        <span>📅 {{ paper.semester }}</span>
+        <span>📋 {{ paper.get_exam_type_display }}</span>
+        {% if paper.total_marks %}<span>🏆 {{ paper.total_marks }} marks</span>{% endif %}
+        {% if paper.duration_mins %}<span>⏱ {{ paper.duration_mins }} minutes</span>{% endif %}
+      </div>
+      {% if paper.description %}
+      <div style="font-size:13px;color:var(--gray);margin-top:8px;">{{ paper.description }}</div>
+      {% endif %}
+    </div>
+    <div style="text-align:right;flex-shrink:0;">
+      <div style="font-size:28px;font-weight:800;color:var(--teal);">{{ questions|length }}</div>
+      <div style="font-size:12px;color:var(--gray);">Questions</div>
+    </div>
+  </div>
+</div>
+
+<!-- Filter bar for questions -->
+<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center;">
+  <span style="font-size:13px;color:var(--gray);font-weight:500;">Filter:</span>
+  <button class="q-filter-btn active" data-filter="all" onclick="filterQ('all',this)">All</button>
+  <button class="q-filter-btn" data-filter="easy" onclick="filterQ('easy',this)">🟢 Easy</button>
+  <button class="q-filter-btn" data-filter="medium" onclick="filterQ('medium',this)">🟡 Medium</button>
+  <button class="q-filter-btn" data-filter="hard" onclick="filterQ('hard',this)">🔴 Hard</button>
+</div>
+
+<style>
+.q-filter-btn {
+  padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;
+  border:1px solid var(--border);background:#fff;color:var(--gray);transition:all .2s;font-family:inherit;
+}
+.q-filter-btn.active, .q-filter-btn:hover {
+  background:var(--sidebar);color:#fff;border-color:var(--sidebar);
+}
+</style>
+
+<!-- Questions -->
+<div id="questionsList">
+{% for q in questions %}
+<div class="q-item" data-difficulty="{{ q.difficulty }}"
+     style="background:#fff;border:1px solid var(--border);border-radius:12px;
+            padding:20px 22px;margin-bottom:12px;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+    <div style="flex:1;">
+      <!-- Question header -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <span style="font-size:14px;font-weight:800;color:var(--teal);">Q{{ q.order }}</span>
+        {% if q.marks %}
+        <span style="font-size:12px;font-weight:600;padding:2px 8px;border-radius:4px;
+                     background:#f3f4f6;color:var(--gray);">{{ q.marks }} marks</span>
+        {% endif %}
+        {% if q.topic_tag %}
+        <span class="tag tag-clo">{{ q.topic_tag }}</span>
+        {% endif %}
+        {% if q.difficulty %}
+        <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;
+          background:{% if q.difficulty == 'easy' %}#d1fae5{% elif q.difficulty == 'medium' %}#fef3c7{% else %}#fee2e2{% endif %};
+          color:{% if q.difficulty == 'easy' %}#065f46{% elif q.difficulty == 'medium' %}#92400e{% else %}#991b1b{% endif %};">
+          {{ q.get_difficulty_display }}
+        </span>
+        {% endif %}
+      </div>
+
+      <!-- Question text -->
+      <div style="font-size:15px;color:var(--text);line-height:1.6;">{{ q.text }}</div>
+
+      <!-- Answer hint (only if show_hint = True) -->
+      {% if q.show_hint and q.answer_hint %}
+      <div style="margin-top:14px;">
+        <button onclick="toggleHint(this)"
+                style="font-size:12px;color:var(--teal);background:none;border:none;
+                       cursor:pointer;padding:0;font-family:inherit;font-weight:600;">
+          💡 Show Model Answer ▼
+        </button>
+        <div class="hint-content" style="display:none;margin-top:8px;background:#f0fdf4;
+             border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;
+             font-size:13px;color:#166534;line-height:1.6;">
+          {{ q.answer_hint }}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% empty %}
+<div class="empty">
+  <div class="empty-icon">❓</div>
+  <div class="empty-title">No questions in this paper</div>
+</div>
+{% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterQ(filter, btn) {
+  document.querySelectorAll('.q-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.q-item').forEach(item => {
+    if (filter === 'all' || item.dataset.difficulty === filter)
+      item.style.display = '';
+    else
+      item.style.display = 'none';
+  });
+}
+
+function toggleHint(btn) {
+  const hint = btn.nextElementSibling;
+  const isVisible = hint.style.display !== 'none';
+  hint.style.display = isVisible ? 'none' : 'block';
+  btn.textContent = isVisible ? '💡 Show Model Answer ▼' : '💡 Hide Model Answer ▲';
+}
+</script>
+{% endblock %}
+
+
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# ১. faculty/base.html তে Announcements nav এর পরে এই line ADD করো:
+# ══════════════════════════════════════════════════════════════════════════
+
+    <a href="{% url 'faculty_question_bank' %}" class="{% block nav_question_bank %}{% endblock %}">
+      <span class="nav-icon">📚</span>
+      <span>Question Bank</span>
+    </a>
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# ২. student/base.html তে Notifications nav এর আগে এই line ADD করো:
+# ══════════════════════════════════════════════════════════════════════════
+
+    <a href="{% url 'student_question_bank' %}" class="{% block nav_question_bank %}{% endblock %}">
+      <span class="nav-icon">📚</span>
+      <span>Question Bank</span>
+    </a>
+
+
+
+
+
+    Unit Tests
+
+
+
+
+from django.test import TestCase, Client
+from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
+from datetime import timedelta
+from unittest.mock import patch, MagicMock
+import json
+
+from faculty.models import Faculty, Course, PastPaper, Question
+from student.models import Student, Enrollment
+
+
+class QuestionBankViewTest(TestCase):
+    
+    def setUp(self):
+        # Create faculty user
+        self.faculty_user = User.objects.create_user(
+            username='faculty@test.com',
+            password='faculty123',
+            email='faculty@test.com'
+        )
+        
+        # Create faculty profile
+        self.faculty = Faculty.objects.create(
+            user=self.faculty_user,
+            faculty_id='FAC001',
+            department='CSE',
+            designation='Assistant Professor'
+        )
+        
+        # Create courses
+        self.course1 = Course.objects.create(
+            code='CS301',
+            name='Data Structures',
+            department='CSE',
+            credits=3
+        )
+        
+        self.course2 = Course.objects.create(
+            code='CS302',
+            name='Algorithms',
+            department='CSE',
+            credits=3
+        )
+        
+        # Create a past paper
+        self.paper = PastPaper.objects.create(
+            title='Mid Exam Fall 2024',
+            course_code='CS301',
+            course_name='Data Structures',
+            semester='Fall 2024',
+            exam_type='mid',
+            total_marks=50,
+            duration_mins=90,
+            description='Mid-term examination covering arrays and linked lists',
+            is_public=True,
+            created_by=self.faculty
+        )
+        
+        # Create questions
+        self.question1 = Question.objects.create(
+            paper=self.paper,
+            text='Implement a function to reverse a linked list',
+            marks=25,
+            order=1,
+            topic_tag='Linked Lists',
+            difficulty='medium',
+            answer_hint='Use three pointers: prev, current, next',
+            show_hint=True
+        )
+        
+        self.question2 = Question.objects.create(
+            paper=self.paper,
+            text='Explain the time complexity of bubble sort',
+            marks=25,
+            order=2,
+            topic_tag='Sorting',
+            difficulty='easy',
+            answer_hint='O(n^2) in worst case',
+            show_hint=False
+        )
+        
+        self.client = Client()
+        self.client.login(username='faculty@test.com', password='faculty123')
+    
+    def test_question_bank_page_loads(self):
+        """Test that question bank page loads successfully"""
+        response = self.client.get('/faculty/question-bank/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'faculty/question_bank.html')
+    
+    def test_past_papers_displayed(self):
+        """Test that past papers are displayed correctly"""
+        response = self.client.get('/faculty/question-bank/')
+        self.assertContains(response, self.paper.title)
+        self.assertContains(response, self.paper.course_code)
+        self.assertContains(response, self.paper.semester)
+        self.assertContains(response, 'Mid Exam')
+        self.assertContains(response, '50 marks')
+        self.assertContains(response, '2 questions')
+    
+    def test_questions_displayed_in_accordion(self):
+        """Test that questions are displayed within each paper"""
+        response = self.client.get('/faculty/question-bank/')
+        self.assertContains(response, self.question1.text)
+        self.assertContains(response, self.question2.text)
+        self.assertContains(response, f'{self.question1.marks} marks')
+        self.assertContains(response, self.question1.topic_tag)
+        self.assertContains(response, 'Medium')
+    
+    def test_hint_display_when_shown(self):
+        """Test that hint is displayed when show_hint is True"""
+        response = self.client.get('/faculty/question-bank/')
+        self.assertContains(response, self.question1.answer_hint)
+        self.assertContains(response, 'visible to students')
+    
+    def test_hint_hidden_when_not_shown(self):
+        """Test that hint is displayed but marked as hidden when show_hint is False"""
+        response = self.client.get('/faculty/question-bank/')
+        self.assertContains(response, self.question2.answer_hint)
+        self.assertContains(response, 'hidden from students')
+    
+    def test_public_badge_displayed(self):
+        """Test that public badge is shown for public papers"""
+        response = self.client.get('/faculty/question-bank/')
+        self.assertContains(response, '🌐 Public')
+    
+    def test_restricted_badge_for_private_papers(self):
+        """Test that restricted badge is shown for private papers"""
+        self.paper.is_public = False
+        self.paper.save()
+        
+        response = self.client.get('/faculty/question-bank/')
+        self.assertContains(response, '🔒 Restricted')
+    
+    def test_empty_state_message(self):
+        """Test empty state when no past papers exist"""
+        PastPaper.objects.all().delete()
+        response = self.client.get('/faculty/question-bank/')
+        self.assertContains(response, 'No past papers yet')
+        self.assertContains(response, 'Upload previous semester papers')
+    
+    def test_course_access_section_for_restricted_paper(self):
+        """Test that allowed courses are shown for restricted papers"""
+        self.paper.is_public = False
+        self.paper.allowed_courses.add(self.course1, self.course2)
+        self.paper.save()
+        
+        response = self.client.get('/faculty/question-bank/')
+        self.assertContains(response, 'Accessible to students enrolled in:')
+        self.assertContains(response, self.course1.code)
+        self.assertContains(response, self.course2.code)
+    
+    def test_course_access_empty_message(self):
+        """Test message when restricted paper has no allowed courses"""
+        self.paper.is_public = False
+        self.paper.allowed_courses.clear()
+        self.paper.save()
+        
+        response = self.client.get('/faculty/question-bank/')
+        self.assertContains(response, 'No courses selected')
+    
+    def test_different_exam_type_icons(self):
+        """Test that different exam types show appropriate icons"""
+        exam_types = [
+            ('mid', '📖'),
+            ('final', '🎓'),
+            ('quiz', '❓'),
+            ('ct', '✏️'),
+            ('assignment', '📝')
+        ]
+        
+        for exam_type, icon in exam_types:
+            paper = PastPaper.objects.create(
+                title=f'{exam_type.title()} Exam',
+                course_code='TEST101',
+                course_name='Test Course',
+                semester='Spring 2024',
+                exam_type=exam_type,
+                created_by=self.faculty
+            )
+            response = self.client.get('/faculty/question-bank/')
+            self.assertContains(response, icon)
+            paper.delete()
+
+
+class CreatePastPaperAPITest(TestCase):
+    
+    def setUp(self):
+        self.faculty_user = User.objects.create_user(
+            username='faculty2@test.com',
+            password='faculty123'
+        )
+        self.faculty = Faculty.objects.create(
+            user=self.faculty_user,
+            faculty_id='FAC002'
+        )
+        
+        self.course1 = Course.objects.create(code='CS401', name='Database Systems')
+        self.course2 = Course.objects.create(code='CS402', name='Operating Systems')
+        
+        self.client = Client()
+        self.client.login(username='faculty2@test.com', password='faculty123')
+    
+    def test_create_public_paper_success(self):
+        """Test creating a public past paper"""
+        data = {
+            'title': 'Final Exam Spring 2024',
+            'course_code': 'CS401',
+            'course_name': 'Database Systems',
+            'semester': 'Spring 2024',
+            'exam_type': 'final',
+            'total_marks': 100,
+            'duration_mins': 120,
+            'description': 'Final exam covering all topics',
+            'is_public': True,
+            'allowed_course_ids': [],
+            'questions': [
+                {
+                    'text': 'Explain ACID properties',
+                    'marks': 20,
+                    'topic_tag': 'Database Concepts',
+                    'difficulty': 'medium',
+                    'answer_hint': 'Atomicity, Consistency, Isolation, Durability',
+                    'show_hint': True
+                },
+                {
+                    'text': 'Write SQL query for JOIN operation',
+                    'marks': 20,
+                    'topic_tag': 'SQL',
+                    'difficulty': 'easy',
+                    'answer_hint': 'Use INNER JOIN, LEFT JOIN etc.',
+                    'show_hint': False
+                }
+            ]
+        }
+        
+        response = self.client.post('/faculty/create_past_paper/', 
+                                   data=json.dumps(data),
+                                   content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertTrue(result['success'])
+        
+        # Verify paper was created
+        paper = PastPaper.objects.get(title='Final Exam Spring 2024')
+        self.assertEqual(paper.course_code, 'CS401')
+        self.assertEqual(paper.total_marks, 100)
+        self.assertTrue(paper.is_public)
+        
+        # Verify questions were created
+        self.assertEqual(paper.questions.count(), 2)
+        self.assertEqual(paper.questions.first().text, 'Explain ACID properties')
+    
+    def test_create_restricted_paper_with_courses(self):
+        """Test creating a restricted paper with specific allowed courses"""
+        data = {
+            'title': 'Quiz 1 Fall 2024',
+            'course_code': 'CS402',
+            'course_name': 'Operating Systems',
+            'semester': 'Fall 2024',
+            'exam_type': 'quiz',
+            'total_marks': 30,
+            'duration_mins': 30,
+            'description': 'Quiz on process management',
+            'is_public': False,
+            'allowed_course_ids': [self.course1.id, self.course2.id],
+            'questions': [
+                {
+                    'text': 'What is a process?',
+                    'marks': 15,
+                    'topic_tag': 'Process Management',
+                    'difficulty': 'easy',
+                    'answer_hint': 'Program in execution',
+                    'show_hint': True
+                }
+            ]
+        }
+        
+        response = self.client.post('/faculty/create_past_paper/',
+                                   data=json.dumps(data),
+                                   content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertTrue(result['success'])
+        
+        paper = PastPaper.objects.get(title='Quiz 1 Fall 2024')
+        self.assertFalse(paper.is_public)
+        self.assertEqual(paper.allowed_courses.count(), 2)
+        self.assertIn(self.course1, paper.allowed_courses.all())
+        self.assertIn(self.course2, paper.allowed_courses.all())
+    
+    def test_create_paper_missing_required_fields(self):
+        """Test validation for missing required fields"""
+        data = {
+            'title': 'Incomplete Paper',
+            'course_code': '',
+            'course_name': 'Test',
+            'semester': '2024',
+            'exam_type': 'mid',
+            'questions': [{'text': 'Question 1', 'marks': 10}]
+        }
+        
+        response = self.client.post('/faculty/create_past_paper/',
+                                   data=json.dumps(data),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertFalse(result['success'])
+        self.assertIn('Course code, name, title and semester are required', result['error'])
+    
+    def test_create_paper_no_questions(self):
+        """Test validation when no questions are added"""
+        data = {
+            'title': 'Empty Paper',
+            'course_code': 'CS401',
+            'course_name': 'Databases',
+            'semester': '2024',
+            'exam_type': 'mid',
+            'questions': []
+        }
+        
+        response = self.client.post('/faculty/create_past_paper/',
+                                   data=json.dumps(data),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertFalse(result['success'])
+        self.assertIn('Add at least one question', result['error'])
+    
+    def test_create_paper_empty_question_text(self):
+        """Test validation when a question has empty text"""
+        data = {
+            'title': 'Test Paper',
+            'course_code': 'CS401',
+            'course_name': 'Databases',
+            'semester': '2024',
+            'exam_type': 'mid',
+            'questions': [
+                {'text': '', 'marks': 10},
+                {'text': 'Valid question', 'marks': 20}
+            ]
+        }
+        
+        response = self.client.post('/faculty/create_past_paper/',
+                                   data=json.dumps(data),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertFalse(result['success'])
+        self.assertIn('All question texts are required', result['error'])
+    
+    def test_auto_calculate_total_marks(self):
+        """Test that total marks is auto-calculated from questions if not provided"""
+        data = {
+            'title': 'Auto Marks Paper',
+            'course_code': 'CS401',
+            'course_name': 'Databases',
+            'semester': '2024',
+            'exam_type': 'mid',
+            'total_marks': 0,  # Auto-calculate
+            'questions': [
+                {'text': 'Q1', 'marks': 25},
+                {'text': 'Q2', 'marks': 35},
+                {'text': 'Q3', 'marks': 40}
+            ]
+        }
+        
+        response = self.client.post('/faculty/create_past_paper/',
+                                   data=json.dumps(data),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertTrue(result['success'])
+        
+        paper = PastPaper.objects.get(title='Auto Marks Paper')
+        self.assertEqual(paper.total_marks, 100)  # 25+35+40
+    
+    def test_unauthorized_access(self):
+        """Test that non-faculty users cannot access the API"""
+        self.client.logout()
+        student_user = User.objects.create_user('student', 'student@test.com', 'pass')
+        Student.objects.create(user=student_user, student_id='ST001')
+        self.client.login(username='student', password='pass')
+        
+        data = {'title': 'Test', 'course_code': 'CS401', 'questions': [{'text': 'Q1'}]}
+        response = self.client.post('/faculty/create_past_paper/',
+                                   data=json.dumps(data),
+                                   content_type='application/json')
+        
+        self.assertEqual(response.status_code, 302)  # Redirect to login
+
+
+class DeletePastPaperAPITest(TestCase):
+    
+    def setUp(self):
+        self.faculty_user = User.objects.create_user(
+            username='faculty@test.com',
+            password='faculty123'
+        )
+        self.faculty = Faculty.objects.create(
+            user=self.faculty_user,
+            faculty_id='FAC003'
+        )
+        
+        self.paper = PastPaper.objects.create(
+            title='Paper to Delete',
+            course_code='CS501',
+            course_name='AI',
+            semester='2024',
+            exam_type='final',
+            created_by=self.faculty
+        )
+        
+        self.client = Client()
+        self.client.login(username='faculty@test.com', password='faculty123')
+    
+    def test_delete_paper_success(self):
+        """Test successful paper deletion"""
+        response = self.client.post(f'/faculty/question-bank/{self.paper.id}/delete/',
+                                   data=json.dumps({}),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertTrue(result['success'])
+        
+        # Verify paper is deleted
+        with self.assertRaises(PastPaper.DoesNotExist):
+            PastPaper.objects.get(id=self.paper.id)
+    
+    def test_delete_nonexistent_paper(self):
+        """Test deleting a paper that doesn't exist"""
+        response = self.client.post('/faculty/question-bank/99999/delete/',
+                                   data=json.dumps({}),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertFalse(result['success'])
+        self.assertIn('not found', result['error'])
+    
+    def test_delete_paper_unauthorized(self):
+        """Test that faculty cannot delete papers they don't own"""
+        other_faculty = User.objects.create_user('other@test.com', 'other@test.com', 'pass')
+        other_faculty_obj = Faculty.objects.create(user=other_faculty, faculty_id='FAC004')
+        
+        other_paper = PastPaper.objects.create(
+            title="Other Faculty's Paper",
+            course_code='CS502',
+            course_name='ML',
+            semester='2024',
+            exam_type='mid',
+            created_by=other_faculty_obj
+        )
+        
+        response = self.client.post(f'/faculty/question-bank/{other_paper.id}/delete/',
+                                   data=json.dumps({}),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertFalse(result['success'])
+        self.assertIn('not authorized', result['error'])
+        
+        # Verify paper still exists
+        self.assertTrue(PastPaper.objects.filter(id=other_paper.id).exists())
+
+
+class ToggleVisibilityAPITest(TestCase):
+    
+    def setUp(self):
+        self.faculty_user = User.objects.create_user(
+            username='faculty@test.com',
+            password='faculty123'
+        )
+        self.faculty = Faculty.objects.create(
+            user=self.faculty_user,
+            faculty_id='FAC005'
+        )
+        
+        self.paper = PastPaper.objects.create(
+            title='Toggle Paper',
+            course_code='CS601',
+            course_name='Networks',
+            semester='2024',
+            exam_type='quiz',
+            is_public=False,
+            created_by=self.faculty
+        )
+        
+        self.client = Client()
+        self.client.login(username='faculty@test.com', password='faculty123')
+    
+    def test_toggle_visibility_from_private_to_public(self):
+        """Test toggling paper visibility from private to public"""
+        response = self.client.post(f'/faculty/question-bank/{self.paper.id}/toggle/',
+                                   data=json.dumps({}),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertTrue(result['success'])
+        self.assertTrue(result['is_public'])
+        
+        # Verify database update
+        self.paper.refresh_from_db()
+        self.assertTrue(self.paper.is_public)
+    
+    def test_toggle_visibility_from_public_to_private(self):
+        """Test toggling paper visibility from public to private"""
+        self.paper.is_public = True
+        self.paper.save()
+        
+        response = self.client.post(f'/faculty/question-bank/{self.paper.id}/toggle/',
+                                   data=json.dumps({}),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertTrue(result['success'])
+        self.assertFalse(result['is_public'])
+        
+        # Verify database update
+        self.paper.refresh_from_db()
+        self.assertFalse(self.paper.is_public)
+
+
+class ToggleHintAPITest(TestCase):
+    
+    def setUp(self):
+        self.faculty_user = User.objects.create_user(
+            username='faculty@test.com',
+            password='faculty123'
+        )
+        self.faculty = Faculty.objects.create(
+            user=self.faculty_user,
+            faculty_id='FAC006'
+        )
+        
+        self.paper = PastPaper.objects.create(
+            title='Hint Test Paper',
+            course_code='CS701',
+            course_name='Compiler Design',
+            semester='2024',
+            exam_type='mid',
+            created_by=self.faculty
+        )
+        
+        self.question = Question.objects.create(
+            paper=self.paper,
+            text='What is parsing?',
+            marks=10,
+            order=1,
+            answer_hint='Process of analyzing text',
+            show_hint=False
+        )
+        
+        self.client = Client()
+        self.client.login(username='faculty@test.com', password='faculty123')
+    
+    def test_toggle_hint_on(self):
+        """Test toggling hint visibility on"""
+        response = self.client.post(f'/faculty/question-bank/hint/{self.question.id}/',
+                                   data=json.dumps({}),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertTrue(result['success'])
+        self.assertTrue(result['show_hint'])
+        
+        # Verify database update
+        self.question.refresh_from_db()
+        self.assertTrue(self.question.show_hint)
+    
+    def test_toggle_hint_off(self):
+        """Test toggling hint visibility off"""
+        self.question.show_hint = True
+        self.question.save()
+        
+        response = self.client.post(f'/faculty/question-bank/hint/{self.question.id}/',
+                                   data=json.dumps({}),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertTrue(result['success'])
+        self.assertFalse(result['show_hint'])
+        
+        # Verify database update
+        self.question.refresh_from_db()
+        self.assertFalse(self.question.show_hint)
+    
+    def test_toggle_hint_for_question_without_hint(self):
+        """Test toggling hint for a question that has no hint"""
+        self.question.answer_hint = ''
+        self.question.save()
+        
+        response = self.client.post(f'/faculty/question-bank/hint/{self.question.id}/',
+                                   data=json.dumps({}),
+                                   content_type='application/json')
+        
+        result = response.json()
+        self.assertFalse(result['success'])
+        self.assertIn('No hint available', result['error'])
+
+
+class QuestionModelTest(TestCase):
+    
+    def setUp(self):
+        self.faculty = Faculty.objects.create(
+            user=User.objects.create_user('faculty', 'faculty@test.com', 'pass'),
+            faculty_id='FAC007'
+        )
+        self.paper = PastPaper.objects.create(
+            title='Model Test',
+            course_code='CS801',
+            course_name='SE',
+            semester='2024',
+            exam_type='final',
+            created_by=self.faculty
+        )
+    
+    def test_question_string_representation(self):
+        """Test question's string representation"""
+        question = Question.objects.create(
+            paper=self.paper,
+            text='What is software engineering?',
+            marks=10,
+            order=1
+        )
+        expected = f"Q1: What is software engineering? (10 marks)"
+        self.assertEqual(str(question), expected)
+    
+    def test_question_ordering(self):
+        """Test that questions are ordered correctly"""
+        q1 = Question.objects.create(paper=self.paper, text='First', order=1, marks=10)
+        q2 = Question.objects.create(paper=self.paper, text='Second', order=2, marks=20)
+        q3 = Question.objects.create(paper=self.paper, text='Third', order=3, marks=30)
+        
+        questions = self.paper.questions.all()
+        self.assertEqual(questions[0].order, 1)
+        self.assertEqual(questions[1].order, 2)
+        self.assertEqual(questions[2].order, 3)
+    
+    def test_difficulty_display(self):
+        """Test difficulty level display text"""
+        easy_q = Question.objects.create(paper=self.paper, text='Easy', marks=5, order=1, difficulty='easy')
+        medium_q = Question.objects.create(paper=self.paper, text='Medium', marks=10, order=2, difficulty='medium')
+        hard_q = Question.objects.create(paper=self.paper, text='Hard', marks=15, order=3, difficulty='hard')
+        
+        self.assertEqual(easy_q.get_difficulty_display(), 'Easy')
+        self.assertEqual(medium_q.get_difficulty_display(), 'Medium')
+        self.assertEqual(hard_q.get_difficulty_display(), 'Hard')
+
+
+
+
+
+
+
+
+
+Selenium Tests
+from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.action_chains import ActionChains
+from django.contrib.auth.models import User
+from faculty.models import Faculty, Course, PastPaper, Question
+import time
+import os
+
+
+class SeleniumQuestionBankTest(StaticLiveServerTestCase):
+    
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--window-size=1920,1080')
+        cls.selenium = webdriver.Chrome(options=chrome_options)
+        cls.selenium.implicitly_wait(10)
+    
+    @classmethod
+    def tearDownClass(cls):
+        cls.selenium.quit()
+        super().tearDownClass()
+    
+    def setUp(self):
+        # Create faculty user
+        self.faculty_user = User.objects.create_user(
+            username='seleniumfaculty',
+            password='selenium123',
+            email='seleniumfaculty@test.com'
+        )
+        
+        self.faculty = Faculty.objects.create(
+            user=self.faculty_user,
+            faculty_id='SELFAC001',
+            department='CSE',
+            designation='Professor'
+        )
+        
+        # Create courses
+        self.course1 = Course.objects.create(
+            code='SEL401',
+            name='Selenium Testing',
+            department='CSE',
+            credits=3
+        )
+        
+        self.course2 = Course.objects.create(
+            code='SEL402',
+            name='Web Automation',
+            department='CSE',
+            credits=3
+        )
+        
+        # Create a sample past paper
+        self.paper = PastPaper.objects.create(
+            title='Mid Exam Fall 2024',
+            course_code='SEL401',
+            course_name='Selenium Testing',
+            semester='Fall 2024',
+            exam_type='mid',
+            total_marks=100,
+            duration_mins=90,
+            description='Mid-term exam covering Selenium basics',
+            is_public=True,
+            created_by=self.faculty
+        )
+        
+        self.question = Question.objects.create(
+            paper=self.paper,
+            text='Write a Selenium test for login functionality',
+            marks=50,
+            order=1,
+            topic_tag='Selenium WebDriver',
+            difficulty='medium',
+            answer_hint='Use WebDriverWait and expected conditions',
+            show_hint=True
+        )
+        
+        # Login
+        self.selenium.get(f'{self.live_server_url}/faculty/login/')
+        username_input = self.selenium.find_element(By.NAME, 'username')
+        password_input = self.selenium.find_element(By.NAME, 'password')
+        username_input.send_keys('seleniumfaculty')
+        password_input.send_keys('selenium123')
+        self.selenium.find_element(By.XPATH, '//button[@type="submit"]').click()
+        
+        # Wait for login to complete
+        WebDriverWait(self.selenium, 10).until(
+            EC.url_contains('/faculty/dashboard/')
+        )
+    
+    def test_question_bank_page_loads(self):
+        """Test that question bank page loads correctly"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Check page title
+        page_title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertIn('Question Bank', page_title.text)
+        
+        # Check upload button
+        upload_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        self.assertTrue(upload_btn.is_displayed())
+    
+    def test_past_paper_displayed(self):
+        """Test that past paper is displayed correctly"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Check paper title
+        paper_title = self.selenium.find_element(By.CLASS_NAME, 'list-title')
+        self.assertEqual(paper_title.text, self.paper.title)
+        
+        # Check course info
+        list_meta = self.selenium.find_element(By.CLASS_NAME, 'list-meta')
+        self.assertIn(self.paper.course_code, list_meta.text)
+        self.assertIn(self.paper.semester, list_meta.text)
+        self.assertIn('Mid Exam', list_meta.text)
+    
+    def test_accordion_expand_collapse(self):
+        """Test that accordion expands and collapses"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Find accordion trigger
+        accordion_trigger = self.selenium.find_element(By.CLASS_NAME, 'accordion-trigger')
+        
+        # Initially body should be visible (since it's the first item)
+        accordion_body = self.selenium.find_element(By.CLASS_NAME, 'accordion-body')
+        self.assertTrue(accordion_body.is_displayed())
+        
+        # Click to collapse
+        accordion_trigger.click()
+        time.sleep(0.5)
+        self.assertFalse(accordion_body.is_displayed())
+        
+        # Click to expand again
+        accordion_trigger.click()
+        time.sleep(0.5)
+        self.assertTrue(accordion_body.is_displayed())
+    
+    def test_question_display_in_accordion(self):
+        """Test that questions are displayed within accordion"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Check question text
+        question_text = self.selenium.find_element(By.XPATH, "//div[contains(@style, 'font-size:13px;color:var(--text);')]")
+        self.assertIn(self.question.text, question_text.text)
+        
+        # Check marks
+        self.assertIn('50 marks', self.selenium.page_source)
+        
+        # Check topic tag
+        topic_tag = self.selenium.find_element(By.XPATH, f"//span[contains(text(), '{self.question.topic_tag}')]")
+        self.assertTrue(topic_tag.is_displayed())
+        
+        # Check difficulty
+        difficulty_tag = self.selenium.find_element(By.XPATH, "//span[contains(text(), 'Medium')]")
+        self.assertTrue(difficulty_tag.is_displayed())
+    
+    def test_hint_display_with_visibility_toggle(self):
+        """Test that hint is displayed and can be toggled"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Check hint is displayed
+        hint_div = self.selenium.find_element(By.XPATH, "//div[contains(text(), 'Hint/Answer:')]")
+        self.assertIn(self.question.answer_hint, hint_div.text)
+        self.assertIn('visible to students', hint_div.text)
+        
+        # Find hint toggle button
+        hint_btn = self.selenium.find_element(By.ID, f'hint-btn-{self.question.id}')
+        self.assertEqual('👁 Hint Shown', hint_btn.text)
+        
+        # Click to hide hint
+        hint_btn.click()
+        time.sleep(1)
+        
+        # Button text should change
+        self.assertEqual('🚫 Hint Hidden', hint_btn.text)
+    
+    def test_visibility_toggle_for_paper(self):
+        """Test toggling paper visibility between public and restricted"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Find visibility button
+        vis_btn = self.selenium.find_element(By.ID, f'vis-btn-{self.paper.id}')
+        self.assertEqual('👁 Public', vis_btn.text)
+        
+        # Click to make restricted
+        vis_btn.click()
+        time.sleep(1)
+        
+        # Button text should change
+        self.assertEqual('🔒 Restricted', vis_btn.text)
+    
+    def test_create_new_paper_with_questions(self):
+        """Test creating a new past paper with questions"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Click upload button
+        upload_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        upload_btn.click()
+        
+        # Wait for modal
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperModal'))
+        )
+        
+        # Fill paper info
+        self.selenium.find_element(By.ID, 'pCode').send_keys('SEL403')
+        self.selenium.find_element(By.ID, 'pCourseName').send_keys('Advanced Selenium')
+        self.selenium.find_element(By.ID, 'pTitle').send_keys('Final Exam Spring 2025')
+        self.selenium.find_element(By.ID, 'pSemester').send_keys('Spring 2025')
+        
+        # Select exam type
+        exam_type = self.selenium.find_element(By.ID, 'pType')
+        exam_type.send_keys('Final Exam')
+        
+        # Set duration
+        self.selenium.find_element(By.ID, 'pDuration').send_keys('120')
+        
+        # Add description
+        self.selenium.find_element(By.ID, 'pDesc').send_keys('Comprehensive final exam')
+        
+        # Add first question
+        add_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), '+ Add Question')]")
+        add_btn.click()
+        
+        # Wait for question to appear
+        time.sleep(1)
+        
+        # Fill first question
+        textareas = self.selenium.find_elements(By.TAG_NAME, 'textarea')
+        textareas[1].send_keys('What is Page Object Model?')
+        
+        # Set marks
+        marks_inputs = self.selenium.find_elements(By.XPATH, "//input[@type='number']")
+        marks_inputs[1].clear()
+        marks_inputs[1].send_keys('25')
+        
+        # Add second question
+        add_btn.click()
+        time.sleep(1)
+        
+        # Fill second question
+        textareas = self.selenium.find_elements(By.TAG_NAME, 'textarea')
+        textareas[2].send_keys('Explain implicit vs explicit wait')
+        
+        # Set marks for second question
+        marks_inputs = self.selenium.find_elements(By.XPATH, "//input[@type='number']")
+        marks_inputs[2].clear()
+        marks_inputs[2].send_keys('25')
+        
+        # Submit the form
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        submit_btn.click()
+        
+        # Wait for page reload
+        time.sleep(2)
+        
+        # Verify new paper appears
+        WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(), 'Final Exam Spring 2025')]"))
+        )
+    
+    def test_create_restricted_paper_with_courses(self):
+        """Test creating a restricted paper with specific allowed courses"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Click upload button
+        upload_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        upload_btn.click()
+        
+        # Wait for modal
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperModal'))
+        )
+        
+        # Fill paper info
+        self.selenium.find_element(By.ID, 'pCode').send_keys('SEL404')
+        self.selenium.find_element(By.ID, 'pCourseName').send_keys('Test Automation')
+        self.selenium.find_element(By.ID, 'pTitle').send_keys('Quiz 1 Fall 2025')
+        self.selenium.find_element(By.ID, 'pSemester').send_keys('Fall 2025')
+        
+        # Make it restricted (uncheck public)
+        public_checkbox = self.selenium.find_element(By.ID, 'pIsPublic')
+        public_checkbox.click()
+        
+        # Select allowed courses
+        course_checkboxes = self.selenium.find_elements(By.CLASS_NAME, 'course-access-check')
+        for checkbox in course_checkboxes:
+            checkbox.click()
+        
+        # Add a question
+        add_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), '+ Add Question')]")
+        add_btn.click()
+        time.sleep(1)
+        
+        textareas = self.selenium.find_elements(By.TAG_NAME, 'textarea')
+        textareas[1].send_keys('What is CI/CD?')
+        
+        # Submit
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        submit_btn.click()
+        
+        time.sleep(2)
+        
+        # Verify paper appears with restricted badge
+        restricted_badge = WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//span[contains(text(), '🔒 Restricted')]"))
+        )
+        self.assertTrue(restricted_badge.is_displayed())
+    
+    def test_delete_paper(self):
+        """Test deleting a past paper"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Find delete button
+        delete_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), '🗑')]")
+        
+        # Handle confirm dialog
+        self.selenium.execute_script("window.confirm = function() { return true; }")
+        delete_btn.click()
+        
+        time.sleep(2)
+        
+        # Verify paper is removed
+        paper_elements = self.selenium.find_elements(By.XPATH, f"//div[contains(text(), '{self.paper.title}')]")
+        self.assertEqual(len(paper_elements), 0)
+    
+    def test_cancel_paper_creation(self):
+        """Test canceling paper creation modal"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Open modal
+        upload_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        upload_btn.click()
+        
+        # Wait for modal
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperModal'))
+        )
+        
+        # Close modal
+        close_btn = self.selenium.find_element(By.CLASS_NAME, 'modal-close')
+        close_btn.click()
+        
+        # Wait for modal to disappear
+        WebDriverWait(self.selenium, 10).until(
+            EC.invisibility_of_element_located((By.ID, 'createPaperModal'))
+        )
+        
+        # Verify modal is hidden
+        modal = self.selenium.find_element(By.ID, 'createPaperModal')
+        self.assertFalse(modal.is_displayed())
+    
+    def test_validation_on_paper_creation(self):
+        """Test validation when creating paper with missing fields"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Open modal
+        upload_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        upload_btn.click()
+        
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperModal'))
+        )
+        
+        # Try to submit without filling required fields
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        submit_btn.click()
+        
+        # Check error message
+        error_div = WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperError'))
+        )
+        self.assertIn('Course code, name, title and semester are required', error_div.text)
+    
+    def test_validation_for_questions(self):
+        """Test validation when creating paper without questions"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Open modal
+        upload_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        upload_btn.click()
+        
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperModal'))
+        )
+        
+        # Fill required fields but no questions
+        self.selenium.find_element(By.ID, 'pCode').send_keys('TEST101')
+        self.selenium.find_element(By.ID, 'pCourseName').send_keys('Test Course')
+        self.selenium.find_element(By.ID, 'pTitle').send_keys('Test Paper')
+        self.selenium.find_element(By.ID, 'pSemester').send_keys('2024')
+        
+        # Submit
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        submit_btn.click()
+        
+        # Check error message
+        error_div = WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperError'))
+        )
+        self.assertIn('Add at least one question', error_div.text)
+    
+    def test_add_and_remove_questions_dynamically(self):
+        """Test dynamically adding and removing questions in modal"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Open modal
+        upload_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        upload_btn.click()
+        
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperModal'))
+        )
+        
+        # Add first question
+        add_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), '+ Add Question')]")
+        add_btn.click()
+        time.sleep(0.5)
+        
+        # Add second question
+        add_btn.click()
+        time.sleep(0.5)
+        
+        # Verify question count
+        q_count_span = self.selenium.find_element(By.ID, 'qBankCount')
+        self.assertEqual('2', q_count_span.text)
+        
+        # Remove first question
+        delete_btns = self.selenium.find_elements(By.XPATH, "//button[contains(text(), '🗑')]")
+        delete_btns[0].click()
+        time.sleep(0.5)
+        
+        # Verify updated count
+        self.assertEqual('1', q_count_span.text)
+    
+    def test_different_exam_type_styles(self):
+        """Test that different exam types show different styles"""
+        # Create papers with different exam types
+        exam_papers = []
+        for exam_type in ['quiz', 'ct', 'assignment']:
+            paper = PastPaper.objects.create(
+                title=f'{exam_type.title()} Paper',
+                course_code='TEST',
+                course_name='Test',
+                semester='2024',
+                exam_type=exam_type,
+                created_by=self.faculty
+            )
+            exam_papers.append(paper)
+        
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Check that all papers are displayed with different icons
+        for paper in exam_papers:
+            self.assertIn(paper.title, self.selenium.page_source)
+    
+    def test_responsive_design(self):
+        """Test responsive design on different viewport sizes"""
+        # Test mobile viewport
+        self.selenium.set_window_size(375, 667)
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Check content is visible
+        page_title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertTrue(page_title.is_displayed())
+        
+        # Test tablet viewport
+        self.selenium.set_window_size(768, 1024)
+        self.selenium.refresh()
+        self.assertTrue(page_title.is_displayed())
+        
+        # Test desktop viewport
+        self.selenium.set_window_size(1920, 1080)
+        self.selenium.refresh()
+        self.assertTrue(page_title.is_displayed())
+    
+    def test_keyboard_navigation(self):
+        """Test keyboard navigation through the page"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Tab through elements
+        body = self.selenium.find_element(By.TAG_NAME, 'body')
+        body.send_keys(Keys.TAB)
+        
+        # Active element should be the upload button
+        active_element = self.selenium.switch_to.active_element
+        self.assertTrue(active_element.text in ['Upload Past Paper', '+ Upload Past Paper'])
+    
+    def test_question_count_updates(self):
+        """Test that question count updates when adding/removing questions"""
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        # Open modal
+        upload_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        upload_btn.click()
+        
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperModal'))
+        )
+        
+        # Initially 0 questions
+        q_count = self.selenium.find_element(By.ID, 'qBankCount')
+        self.assertEqual('0', q_count.text)
+        
+        # Add question
+        add_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), '+ Add Question')]")
+        add_btn.click()
+        time.sleep(0.5)
+        
+        # Count should be 1
+        self.assertEqual('1', q_count.text)
+        
+        # Add another question
+        add_btn.click()
+        time.sleep(0.5)
+        
+        # Count should be 2
+        self.assertEqual('2', q_count.text)
+
+
+class SeleniumCompleteWorkflowTest(StaticLiveServerTestCase):
+    """Test complete faculty workflow for question bank management"""
+    
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        cls.selenium = webdriver.Chrome(options=chrome_options)
+        cls.selenium.implicitly_wait(10)
+    
+    @classmethod
+    def tearDownClass(cls):
+        cls.selenium.quit()
+        super().tearDownClass()
+    
+    def setUp(self):
+        self.faculty_user = User.objects.create_user(
+            username='workflowfaculty',
+            password='workflow123'
+        )
+        self.faculty = Faculty.objects.create(
+            user=self.faculty_user,
+            faculty_id='WF001'
+        )
+        self.course = Course.objects.create(
+            code='WF101',
+            name='Workflow Testing'
+        )
+        
+        # Login
+        self.selenium.get(f'{self.live_server_url}/faculty/login/')
+        username_input = self.selenium.find_element(By.NAME, 'username')
+        password_input = self.selenium.find_element(By.NAME, 'password')
+        username_input.send_keys('workflowfaculty')
+        password_input.send_keys('workflow123')
+        self.selenium.find_element(By.XPATH, '//button[@type="submit"]').click()
+    
+    def test_complete_paper_lifecycle(self):
+        """Test complete lifecycle: create → view → modify → delete"""
+        
+        # Step 1: Create a new paper
+        self.selenium.get(f'{self.live_server_url}/faculty/question-bank/')
+        
+        upload_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        upload_btn.click()
+        
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'createPaperModal'))
+        )
+        
+        # Fill paper details
+        self.selenium.find_element(By.ID, 'pCode').send_keys('WF101')
+        self.selenium.find_element(By.ID, 'pCourseName').send_keys('Workflow Testing')
+        self.selenium.find_element(By.ID, 'pTitle').send_keys('Comprehensive Workflow Test')
+        self.selenium.find_element(By.ID, 'pSemester').send_keys('Spring 2024')
+        self.selenium.find_element(By.ID, 'pDuration').send_keys('60')
+        
+        # Add question
+        add_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), '+ Add Question')]")
+        add_btn.click()
+        time.sleep(1)
+        
+        textareas = self.selenium.find_elements(By.TAG_NAME, 'textarea')
+        textareas[1].send_keys('Test question for workflow')
+        
+        marks_inputs = self.selenium.find_elements(By.XPATH, "//input[@type='number']")
+        marks_inputs[1].clear()
+        marks_inputs[1].send_keys('100')
+        
+        # Submit
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Upload Past Paper')]")
+        submit_btn.click()
+        
+        time.sleep(2)
+        
+        # Step 2: Verify paper appears
+        paper_title = WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(), 'Comprehensive Workflow Test')]"))
+        )
+        self.assertTrue(paper_title.is_displayed())
+        
+        # Step 3: Toggle visibility
+        vis_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), '👁 Public')]")
+        vis_btn.click()
+        time.sleep(1)
+        
+        # Step 4: Verify visibility changed
+        self.assertEqual('🔒 Restricted', vis_btn.text)
+        
+        # Step 5: Delete the paper
+        delete_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), '🗑')]")
+        self.selenium.execute_script("window.confirm = function() { return true; }")
+        delete_btn.click()
+        
+        time.sleep(2)
+        
+        # Step 6: Verify paper is removed
+        paper_elements = self.selenium.find_elements(By.XPATH, "//div[contains(text(), 'Comprehensive Workflow Test')]")
+        self.assertEqual(len(paper_elements), 0)
+
+
+
+
+
+
+
+
+

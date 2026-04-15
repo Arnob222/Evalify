@@ -1,0 +1,1919 @@
+
+
+evalify_app/templates/student/assignments.html
+----------------------------------------------------
+{% extends 'student/base.html' %}
+{% block nav_assignments %}active{% endblock %}
+
+{% block content %}
+<div class="page-title">Assignments &amp; Assessments</div>
+<div class="page-sub">View and submit assessments for your enrolled courses.</div>
+
+{% if assignments_with_status %}
+  {% for assessment, submission, window in assignments_with_status %}
+  <div class="list-item">
+    <div class="list-icon" style="
+      {% if assessment.assessment_type == 'assignment' %}background:#dbeafe;
+      {% elif assessment.assessment_type == 'quiz' %}background:#fef9c3;
+      {% elif assessment.assessment_type == 'mid' %}background:#fde68a;
+      {% elif assessment.assessment_type == 'ct' %}background:#d1fae5;
+      {% else %}background:#fee2e2;{% endif %}
+      font-size:20px;">
+      {% if assessment.assessment_type == 'assignment' %}📝
+      {% elif assessment.assessment_type == 'quiz' %}❓
+      {% elif assessment.assessment_type == 'mid' %}📖
+      {% elif assessment.assessment_type == 'ct' %}✏️
+      {% else %}🎓{% endif %}
+    </div>
+
+    <div class="list-body">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="list-title">{{ assessment.title }}</span>
+        <span class="tag" style="
+          {% if assessment.assessment_type == 'assignment' %}background:#dbeafe;color:#1d4ed8;
+          {% elif assessment.assessment_type == 'quiz' %}background:#fef9c3;color:#854d0e;
+          {% elif assessment.assessment_type == 'mid' %}background:#fde68a;color:#92400e;
+          {% elif assessment.assessment_type == 'ct' %}background:#d1fae5;color:#065f46;
+          {% else %}background:#fee2e2;color:#991b1b;{% endif %}
+        ">{{ assessment.get_assessment_type_display }}</span>
+      </div>
+
+      <div class="list-meta">
+        {{ assessment.course.code }}: {{ assessment.course.name }}
+        {% if assessment.due_date %}&nbsp;·&nbsp; Due: {{ assessment.due_date }}{% endif %}
+        &nbsp;·&nbsp; Total: {{ assessment.total_marks }} marks
+        &nbsp;·&nbsp; {{ assessment.questions.count }} question(s)
+      </div>
+
+      {% if assessment.description %}
+      <div style="font-size:12px;color:var(--gray);margin-top:3px;">{{ assessment.description }}</div>
+      {% endif %}
+
+      <!-- ── Deadline / Grace period status (only if not submitted) ── -->
+      {% if not submission and window %}
+        {% if window.is_late %}
+          <!-- Late but within grace or max_late_days -->
+          <div style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;
+                      background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;
+                      padding:5px 10px;font-size:12px;color:#c2410c;">
+            ⏰ <strong>Late:</strong> {{ window.window_msg }}
+            {% if assessment.late_deduction_value > 0 %}
+            — <strong>
+              {{ assessment.late_deduction_value }}{% if assessment.late_deduction_type == 'percent' %}%{% else %} marks{% endif %}/day deduction
+            </strong>
+            {% endif %}
+          </div>
+        {% elif window.can_submit %}
+          <!-- On time -->
+          <div style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;
+                      background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;
+                      padding:5px 10px;font-size:12px;color:#166534;">
+            ✓ {{ window.window_msg }}
+          </div>
+        {% else %}
+          <!-- Closed -->
+          <div style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;
+                      background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;
+                      padding:5px 10px;font-size:12px;color:#991b1b;">
+            🔒 {{ window.window_msg }}
+          </div>
+        {% endif %}
+
+        <!-- Grace period info badge -->
+        {% if assessment.grace_period_hours > 0 %}
+        <div style="display:inline-flex;align-items:center;gap:5px;margin-top:4px;margin-left:6px;
+                    font-size:11px;color:var(--gray);">
+          Grace: {{ assessment.grace_period_hours }}h
+          {% if assessment.max_late_days > 0 %}
+          · Max late: {{ assessment.max_late_days }} day(s)
+          {% endif %}
+        </div>
+        {% endif %}
+      {% endif %}
+
+      <!-- Questions preview -->
+      {% if assessment.questions.all %}
+      <div style="margin-top:8px;">
+        {% for q in assessment.questions.all %}
+        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:6px;
+                    padding:8px 12px;margin-bottom:6px;">
+          <div style="font-size:13px;font-weight:600;">Q{{ q.order }}: {{ q.text }}</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:3px;">
+            Marks: {{ q.max_marks }}
+            {% if q.clos.all %}
+              &nbsp;·&nbsp;
+              {% for c in q.clos.all %}<span class="tag tag-clo" style="font-size:10px;">{{ c.code }}</span>{% endfor %}
+            {% endif %}
+            {% if q.plos.all %}
+              &nbsp;
+              {% for p in q.plos.all %}<span class="tag tag-plo" style="font-size:10px;">{{ p.code }}</span>{% endfor %}
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Submission status -->
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        {% if submission %}
+          <span class="tag tag-graded">✓ Submitted {{ submission.submitted_at|date:"M d, Y H:i" }}</span>
+
+          <!-- Late badge on submission -->
+          {% if submission.is_late %}
+          <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;
+                       background:#fff7ed;color:#c2410c;">
+            ⏰ Late ({{ submission.hours_late|floatformat:1 }}h)
+          </span>
+          {% endif %}
+
+          {% if submission.submitted_file %}
+          <a href="{{ submission.submitted_file.url }}" target="_blank"
+             style="font-size:12px;color:var(--teal);text-decoration:none;">
+            📎 Download File
+          </a>
+          {% endif %}
+
+          {% if submission.status == 'graded' %}
+          <span class="tag tag-graded">
+            Score: {{ submission.total_score }}/{{ assessment.total_marks }}
+          </span>
+
+          <!-- Show deduction if any -->
+          {% if submission.late_deduction > 0 %}
+          <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;
+                       background:#fee2e2;color:#991b1b;">
+            − {{ submission.late_deduction }} late deduction
+          </span>
+          <span style="font-size:13px;font-weight:800;color:var(--green);">
+            Final: {{ submission.final_score }}/{{ assessment.total_marks }}
+          </span>
+          {% endif %}
+          {% endif %}
+
+          {% if submission.feedback %}
+          <div style="width:100%;font-size:12px;color:var(--gray);margin-top:4px;
+                      background:#f0fdf4;border-radius:5px;padding:6px 10px;">
+            Feedback: {{ submission.feedback }}
+          </div>
+          {% endif %}
+
+        {% else %}
+          <span class="tag tag-pending">Pending</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Submit button -->
+    {% if not submission %}
+      {% if window.can_submit %}
+      <button class="btn {% if window.is_late %}btn-outline{% else %}btn-primary{% endif %} btn-sm"
+              style="{% if window.is_late %}border-color:var(--orange);color:var(--orange);{% endif %}"
+              onclick="openSubmitModal({{ assessment.id }}, '{{ assessment.title|escapejs }}',
+                       '{{ assessment.get_assessment_type_display }}', {{ assessment.total_marks }},
+                       {{ window.is_late|lower }})">
+        {% if window.is_late %}⏰ Submit Late{% else %}Submit{% endif %}
+      </button>
+      {% else %}
+      <span style="font-size:12px;color:var(--red);font-weight:600;">Closed</span>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+
+{% else %}
+  <div class="empty">
+    <div class="empty-icon">📋</div>
+    <div class="empty-title">No assessments yet</div>
+    <div style="font-size:13px;">Assessments from your enrolled courses will appear here.</div>
+  </div>
+{% endif %}
+
+
+<!-- Submit Modal -->
+<div class="modal-overlay" id="submitModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="modalTitle">Submit</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:2px;" id="modalSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('submitModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Late warning inside modal -->
+      <div id="lateWarning" style="display:none;background:#fff7ed;border:1px solid #fed7aa;
+           border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#c2410c;">
+        ⏰ <strong>Late submission</strong> — a mark deduction will be applied automatically.
+      </div>
+
+      <form id="submitForm" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="form-group">
+          <label class="form-label">
+            Your Answer
+            <span style="color:var(--gray);font-weight:400;">(optional if uploading a file)</span>
+          </label>
+          <textarea class="form-control" name="content" id="answerText" rows="5"
+                    placeholder="Type your answer here..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            Upload File
+            <span style="color:var(--gray);font-weight:400;">(optional if answer is typed)</span>
+          </label>
+          <input class="form-control" type="file" name="submitted_file" id="fileInput"
+                 accept=".pdf,.doc,.docx,.txt,.zip,.py,.java,.cpp,.c,.js,.png,.jpg,.jpeg">
+          <div style="font-size:11px;color:var(--gray);margin-top:4px;">
+            Accepted: PDF, Word, TXT, ZIP, code files, images
+          </div>
+        </div>
+        <div id="submitError" style="color:var(--red);font-size:13px;display:none;margin-top:6px;"></div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary btn-full" id="submitBtn" onclick="doSubmit()">Submit</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+let currentAssessmentId = null;
+
+function openSubmitModal(id, title, typeLabel, marks, isLate) {
+  currentAssessmentId = id;
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalSub').textContent   = typeLabel + ' · ' + marks + ' marks';
+  document.getElementById('answerText').value  = '';
+  document.getElementById('fileInput').value   = '';
+  document.getElementById('submitError').style.display  = 'none';
+  document.getElementById('submitBtn').disabled    = false;
+  document.getElementById('submitBtn').textContent = isLate ? '⏰ Submit (Late)' : 'Submit';
+  document.getElementById('lateWarning').style.display = isLate ? 'block' : 'none';
+  openModal('submitModal');
+}
+
+async function doSubmit() {
+  const errEl  = document.getElementById('submitError');
+  const btn    = document.getElementById('submitBtn');
+  const answer = document.getElementById('answerText').value.trim();
+  const file   = document.getElementById('fileInput').files[0];
+
+  if (!answer && !file) {
+    errEl.textContent   = 'Please type an answer or upload a file.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = 'Submitting...';
+  errEl.style.display = 'none';
+
+  const formData = new FormData(document.getElementById('submitForm'));
+  try {
+    const res  = await fetch(`/student/assignments/${currentAssessmentId}/submit/`, {
+      method: 'POST', headers: { 'X-CSRFToken': getCsrf() }, body: formData,
+    });
+    const data = await res.json();
+    if (data.success) {
+      location.reload();
+    } else {
+      errEl.textContent   = data.error || 'Submission failed. Please try again.';
+      errEl.style.display = 'block';
+      btn.disabled    = false;
+      btn.textContent = 'Submit';
+    }
+  } catch(e) {
+    errEl.textContent   = 'Network error. Please try again.';
+    errEl.style.display = 'block';
+    btn.disabled    = false;
+    btn.textContent = 'Submit';
+  }
+}
+</script>
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+├── migrations/
+│   └── 0008_grace_period.py   ← নতুন file বানাও ⬅️
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('evalify_app', '0007_notification'),
+    ]
+
+    operations = [
+        # Assessment — grace period settings
+        migrations.AddField(
+            model_name='assessment',
+            name='grace_period_hours',
+            field=models.IntegerField(
+                default=0,
+                help_text='Extra hours allowed after due date (0 = no grace period)',
+            ),
+        ),
+        migrations.AddField(
+            model_name='assessment',
+            name='late_deduction_type',
+            field=models.CharField(
+                max_length=10,
+                choices=[('percent', 'Percent'), ('flat', 'Flat Marks')],
+                default='percent',
+            ),
+        ),
+        migrations.AddField(
+            model_name='assessment',
+            name='late_deduction_value',
+            field=models.FloatField(
+                default=0,
+                help_text='Deduction per day after grace period (percent or flat marks)',
+            ),
+        ),
+        migrations.AddField(
+            model_name='assessment',
+            name='max_late_days',
+            field=models.IntegerField(
+                default=0,
+                help_text='Max days late allowed (0 = no limit within grace)',
+            ),
+        ),
+        # Submission — track late status
+        migrations.AddField(
+            model_name='submission',
+            name='is_late',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AddField(
+            model_name='submission',
+            name='hours_late',
+            field=models.FloatField(default=0),
+        ),
+        migrations.AddField(
+            model_name='submission',
+            name='late_deduction',
+            field=models.FloatField(default=0),
+        ),
+        migrations.AddField(
+            model_name='submission',
+            name='final_score',
+            field=models.FloatField(
+                default=0,
+                help_text='total_score minus late_deduction',
+            ),
+        ),
+    ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# নতুন file বানাও:  evalify_app/grace_period.py
+# ══════════════════════════════════════════════════════════════════════════
+"""
+Grace Period & Late Submission Deduction Logic
+"""
+
+from django.utils import timezone
+from datetime import datetime, timedelta
+
+
+def get_deadline_datetime(assessment):
+    """
+    Assessment এর due_date কে datetime এ convert করো।
+    due_date শেষ রাত ১১:৫৯ PM ধরা হয়।
+    """
+    if not assessment.due_date:
+        return None
+    return timezone.make_aware(
+        datetime.combine(assessment.due_date, datetime.max.time().replace(second=59, microsecond=0))
+    )
+
+
+def get_grace_deadline(assessment):
+    """
+    Due date + grace period hours = শেষ accepted submission time।
+    """
+    deadline = get_deadline_datetime(assessment)
+    if deadline is None:
+        return None
+    return deadline + timedelta(hours=assessment.grace_period_hours)
+
+
+def check_submission_window(assessment):
+    """
+    Returns dict:
+      can_submit  — True/False
+      is_late     — True/False
+      hours_late  — float (0 if on time)
+      days_late   — float
+      window_msg  — human readable message
+    """
+    now = timezone.now()
+    deadline     = get_deadline_datetime(assessment)
+    grace_end    = get_grace_deadline(assessment)
+
+    if deadline is None:
+        return {
+            'can_submit': True, 'is_late': False,
+            'hours_late': 0, 'days_late': 0,
+            'window_msg': 'No deadline set.',
+        }
+
+    # On time
+    if now <= deadline:
+        remaining = deadline - now
+        hours = int(remaining.total_seconds() // 3600)
+        mins  = int((remaining.total_seconds() % 3600) // 60)
+        return {
+            'can_submit': True, 'is_late': False,
+            'hours_late': 0, 'days_late': 0,
+            'window_msg': f"Due in {hours}h {mins}m",
+        }
+
+    # Late but within grace period
+    hours_late = (now - deadline).total_seconds() / 3600
+    days_late  = hours_late / 24
+
+    if assessment.grace_period_hours > 0 and now <= grace_end:
+        grace_remaining = grace_end - now
+        gh = int(grace_remaining.total_seconds() // 3600)
+        gm = int((grace_remaining.total_seconds() % 3600) // 60)
+        return {
+            'can_submit': True, 'is_late': True,
+            'hours_late': round(hours_late, 2),
+            'days_late':  round(days_late, 2),
+            'window_msg': f"Grace period — {gh}h {gm}m left (late deduction applies)",
+        }
+
+    # Past grace period
+    max_days = assessment.max_late_days
+    if max_days > 0 and days_late > max_days:
+        return {
+            'can_submit': False, 'is_late': True,
+            'hours_late': round(hours_late, 2),
+            'days_late':  round(days_late, 2),
+            'window_msg': f"Submission closed — {days_late:.1f} days late (max {max_days} days allowed)",
+        }
+
+    # No grace period but max_late_days allows it
+    if assessment.grace_period_hours == 0 and assessment.max_late_days == 0:
+        return {
+            'can_submit': False, 'is_late': True,
+            'hours_late': round(hours_late, 2),
+            'days_late':  round(days_late, 2),
+            'window_msg': "Deadline passed — submission closed.",
+        }
+
+    return {
+        'can_submit': True, 'is_late': True,
+        'hours_late': round(hours_late, 2),
+        'days_late':  round(days_late, 2),
+        'window_msg': f"Late submission — {days_late:.1f} day(s) late (deduction applies)",
+    }
+
+
+def calculate_deduction(assessment, hours_late):
+    """
+    Deduction calculate করো।
+
+    deduction_type = 'percent'  → total_marks এর % কাটা হবে per day
+    deduction_type = 'flat'     → fixed marks কাটা হবে per day
+
+    Returns: deduction amount (in marks)
+    """
+    if hours_late <= 0:
+        return 0.0
+
+    deduction_value = assessment.late_deduction_value
+    if deduction_value <= 0:
+        return 0.0
+
+    # Grace period hours এর পরে কত দিন late সেটা calculate করো
+    days_after_grace = max(0, (hours_late - assessment.grace_period_hours) / 24)
+    if days_after_grace <= 0:
+        return 0.0
+
+    # Always deduct at least 1 day if any time past grace
+    days_to_deduct = max(1, int(days_after_grace) + (1 if days_after_grace % 1 > 0 else 0))
+
+    if assessment.max_late_days > 0:
+        days_to_deduct = min(days_to_deduct, assessment.max_late_days)
+
+    if assessment.late_deduction_type == 'percent':
+        deduction = (deduction_value / 100) * assessment.total_marks * days_to_deduct
+    else:  # flat
+        deduction = deduction_value * days_to_deduct
+
+    # Can't deduct more than total marks
+    return round(min(deduction, assessment.total_marks), 2)
+
+
+def apply_late_deduction(submission):
+    """
+    Submission save হওয়ার পরে late status আর deduction set করো।
+    submit_assignment view থেকে call করো।
+    """
+    assessment = submission.assessment
+    window     = check_submission_window(assessment)
+
+    submission.is_late    = window['is_late']
+    submission.hours_late = window['hours_late']
+
+    if window['is_late']:
+        deduction = calculate_deduction(assessment, window['hours_late'])
+        submission.late_deduction = deduction
+    else:
+        submission.late_deduction = 0.0
+
+    # final_score = total_score - late_deduction (updated when graded)
+    submission.final_score = max(0, submission.total_score - submission.late_deduction)
+    submission.save(update_fields=['is_late', 'hours_late', 'late_deduction', 'final_score'])
+
+
+def recalculate_final_score(submission):
+    """
+    Grade save হওয়ার পরে final_score recalculate করো।
+    grade_submission view থেকে call করো।
+    """
+    submission.final_score = max(0, submission.total_score - submission.late_deduction)
+    submission.save(update_fields=['final_score'])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # ══════════════════════════════════════════════════════════════════════════
+# views.py তে ৩টা কাজ
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── কাজ ১: top এ import এ ADD করো ────────────────────────────────────────
+# existing imports এর পরে এই line টা add করো:
+
+from .grace_period import check_submission_window, apply_late_deduction, recalculate_final_score
+
+
+# ── কাজ ২: create_assignment function এ grace period fields ADD করো ───────
+# assignment = Assessment.objects.create(...) এর ভেতরে
+# total_marks=0, এর পরে এই lines গুলো ADD করো:
+
+        assignment = Assessment.objects.create(
+            course=course,
+            title=data['title'],
+            description=data.get('description', ''),
+            assessment_type=assessment_type,
+            due_date=due_date,
+            status=status,
+            total_marks=0,
+            # ── Grace period fields ────────────────────────────────────
+            grace_period_hours=int(data.get('grace_period_hours', 0)),
+            late_deduction_type=data.get('late_deduction_type', 'percent'),
+            late_deduction_value=float(data.get('late_deduction_value', 0)),
+            max_late_days=int(data.get('max_late_days', 0)),
+        )
+
+
+# ── কাজ ৩: submit_assignment function পুরোটা REPLACE করো ─────────────────
+
+@student_required
+def submit_assignment(request, assignment_id):
+    assignment = get_object_or_404(Assessment, id=assignment_id, status='published')
+
+    if not Enrollment.objects.filter(student=request.user, course=assignment.course).exists():
+        return JsonResponse({'error': 'You are not enrolled in this course.'}, status=403)
+
+    if Submission.objects.filter(student=request.user, assessment=assignment).exists():
+        return JsonResponse({'error': 'You have already submitted this assignment.'}, status=400)
+
+    # ── Submission window check ────────────────────────────────────────
+    window = check_submission_window(assignment)
+    if not window['can_submit']:
+        return JsonResponse({'error': window['window_msg']}, status=403)
+
+    if request.method == 'POST':
+        content       = request.POST.get('content', '').strip()
+        uploaded_file = request.FILES.get('submitted_file')
+
+        if not content and not uploaded_file:
+            return JsonResponse({'error': 'Please provide an answer or upload a file.'}, status=400)
+
+        sub = Submission.objects.create(
+            student=request.user,
+            assessment=assignment,
+            content=content,
+            submitted_file=uploaded_file,
+        )
+
+        # ── Apply late deduction ───────────────────────────────────────
+        apply_late_deduction(sub)
+
+        return JsonResponse({
+            'success':    True,
+            'is_late':    window['is_late'],
+            'window_msg': window['window_msg'],
+        })
+
+    return JsonResponse({'error': 'POST required'}, status=400)
+
+
+# ── কাজ ৪: grade_submission function এ recalculate ADD করো ───────────────
+# sub.save() এর পরে এই line ADD করো:
+
+        sub.total_score = total
+        sub.feedback    = data.get('feedback', '')
+        sub.status      = status
+        sub.save()
+
+        recalculate_final_score(sub)   # ← এই line ADD করো
+
+        if not was_graded_before:
+            notify_grade_released(sub)
+
+
+# ── কাজ ৫: student_assignments view এ window info ADD করো ────────────────
+# assessments loop এর পরে assignments_with_status বানানোর আগে
+# এই code দিয়ে REPLACE করো:
+
+    submissions = {
+        s.assessment_id: s
+        for s in Submission.objects.filter(student=request.user, assessment__in=assessments)
+    }
+
+    assignments_with_status = []
+    for a in assessments:
+        sub    = submissions.get(a.id)
+        window = check_submission_window(a) if not sub else None
+        assignments_with_status.append((a, sub, window))
+
+    return render(request, 'student/assignments.html', {
+        'assignments_with_status': assignments_with_status,
+    })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+     faculty/assignments.html এর create modal এ এই section টা ADD করো।
+     
+     কোথায় ADD করবে:
+     "Total Marks" form-group এর closing </div> এর পরে,
+     "Questions & CLO/PLO Mapping" div এর আগে।
+     
+     মানে এই line এর আগে:
+     <div style="display:flex;justify-content:space-between...Questions & CLO/PLO
+═══════════════════════════════════════════════════════════════════════ -->
+
+      <!-- Grace Period Section -->
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+                  padding:16px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <span style="font-size:15px;">⏰</span>
+          <div style="font-size:13px;font-weight:700;color:#166534;">Late Submission Policy</div>
+          <span style="font-size:11px;color:var(--gray);font-weight:400;">(optional)</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Grace Period (hours after due date)</label>
+            <input class="form-control" id="aGraceHours" type="number" min="0" value="0"
+                   placeholder="0 = no grace period">
+            <div style="font-size:11px;color:var(--gray);margin-top:3px;">
+              Students can still submit within this window
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Max Late Days Allowed</label>
+            <input class="form-control" id="aMaxLateDays" type="number" min="0" value="0"
+                   placeholder="0 = only grace period">
+            <div style="font-size:11px;color:var(--gray);margin-top:3px;">
+              0 = only grace period window allowed
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Deduction Type</label>
+            <select class="form-control" id="aDeductType" onchange="updateDeductLabel()">
+              <option value="percent">Percentage per day (%)</option>
+              <option value="flat">Flat marks per day</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label" id="deductValueLabel">Deduction per day (%)</label>
+            <input class="form-control" id="aDeductValue" type="number" min="0" step="0.5" value="0"
+                   placeholder="0 = no deduction">
+          </div>
+        </div>
+
+        <!-- Live preview -->
+        <div id="gracePolicyPreview"
+             style="margin-top:12px;font-size:12px;color:#166534;background:#dcfce7;
+                    border-radius:6px;padding:8px 12px;display:none;"></div>
+      </div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     এবং submitCreate() JS function এ apiPost এর data object এ
+     এই fields গুলো ADD করো:
+     
+     due_date: due,
+     grace_period_hours:   parseInt(document.getElementById('aGraceHours').value)   || 0,
+     late_deduction_type:  document.getElementById('aDeductType').value,
+     late_deduction_value: parseFloat(document.getElementById('aDeductValue').value) || 0,
+     max_late_days:        parseInt(document.getElementById('aMaxLateDays').value)   || 0,
+     total_marks: ...,
+═══════════════════════════════════════════════════════════════════════ -->
+
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     এবং এই JS functions গুলো {% block scripts %} এর ভেতরে ADD করো:
+═══════════════════════════════════════════════════════════════════════ -->
+<script>
+function updateDeductLabel() {
+  const type = document.getElementById('aDeductType').value;
+  document.getElementById('deductValueLabel').textContent =
+    type === 'percent' ? 'Deduction per day (%)' : 'Deduction per day (marks)';
+  updateGracePreview();
+}
+
+function updateGracePreview() {
+  const grace   = parseInt(document.getElementById('aGraceHours').value)   || 0;
+  const maxDays = parseInt(document.getElementById('aMaxLateDays').value)   || 0;
+  const type    = document.getElementById('aDeductType').value;
+  const val     = parseFloat(document.getElementById('aDeductValue').value) || 0;
+  const preview = document.getElementById('gracePolicyPreview');
+
+  if (grace === 0 && maxDays === 0 && val === 0) {
+    preview.style.display = 'none'; return;
+  }
+  let msg = '';
+  if (grace > 0) msg += `✓ ${grace}h grace period after due date. `;
+  if (maxDays > 0) msg += `✓ Late submissions accepted up to ${maxDays} day(s). `;
+  else if (grace > 0) msg += `✓ No late submissions after grace period. `;
+  if (val > 0) msg += `✓ ${val}${type === 'percent' ? '%' : ' marks'} deducted per late day.`;
+  preview.textContent = msg;
+  preview.style.display = msg ? 'block' : 'none';
+}
+
+// call on input change
+['aGraceHours','aMaxLateDays','aDeductValue'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', updateGracePreview);
+});
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Unit Tests
+from django.test import TestCase, Client
+from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
+from datetime import timedelta
+from unittest.mock import patch, MagicMock
+
+from student.models import Student, Course, Enrollment, Assessment, Question, CLO, PLO, Submission
+
+
+class StudentAssignmentsViewTest(TestCase):
+    
+    def setUp(self):
+        # Create test user
+        self.user = User.objects.create_user(
+            username='teststudent',
+            password='testpass123',
+            email='student@test.com'
+        )
+        
+        # Create student profile
+        self.student = Student.objects.create(
+            user=self.user,
+            student_id='STU001',
+            department='CSE',
+            semester='Spring 2024'
+        )
+        
+        # Create course
+        self.course = Course.objects.create(
+            code='CSE101',
+            name='Introduction to Programming',
+            department='CSE',
+            credits=3
+        )
+        
+        # Enroll student
+        self.enrollment = Enrollment.objects.create(
+            student=self.student,
+            course=self.course,
+            semester='Spring 2024',
+            enrollment_date=timezone.now()
+        )
+        
+        # Create CLO and PLO
+        self.clo = CLO.objects.create(
+            code='CLO1',
+            description='Understand basic programming concepts',
+            course=self.course
+        )
+        
+        self.plo = PLO.objects.create(
+            code='PLO1',
+            description='Problem Solving Skills'
+        )
+        
+        # Create assessment
+        self.assessment = Assessment.objects.create(
+            title='Python Programming Assignment',
+            description='Write a Python program to calculate factorial',
+            assessment_type='assignment',
+            course=self.course,
+            due_date=timezone.now() + timedelta(days=7),
+            total_marks=100,
+            grace_period_hours=24,
+            max_late_days=3,
+            late_deduction_value=10,
+            late_deduction_type='percent'
+        )
+        
+        # Create questions
+        self.question1 = Question.objects.create(
+            assessment=self.assessment,
+            text='Write a recursive function to calculate factorial',
+            max_marks=50,
+            order=1
+        )
+        self.question1.clos.add(self.clo)
+        self.question1.plos.add(self.plo)
+        
+        self.question2 = Question.objects.create(
+            assessment=self.assessment,
+            text='Explain the base case in recursion',
+            max_marks=50,
+            order=2
+        )
+        
+        self.client = Client()
+        self.client.login(username='teststudent', password='testpass123')
+    
+    def test_assignments_page_loads_successfully(self):
+        """Test that assignments page loads with status 200"""
+        response = self.client.get('/student/assignments/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'student/assignments.html')
+    
+    def test_assignments_page_shows_enrolled_course_assessments(self):
+        """Test that assessments from enrolled courses are displayed"""
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, self.assessment.title)
+        self.assertContains(response, self.course.code)
+        self.assertContains(response, 'Total: 100 marks')
+        self.assertContains(response, '2 question(s)')
+    
+    def test_assignments_page_shows_questions(self):
+        """Test that assessment questions are displayed"""
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, self.question1.text)
+        self.assertContains(response, self.question2.text)
+        self.assertContains(response, f'Marks: {self.question1.max_marks}')
+    
+    def test_assignments_page_shows_clo_and_plo_tags(self):
+        """Test that CLO and PLO tags are displayed"""
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, self.clo.code)
+        self.assertContains(response, self.plo.code)
+    
+    def test_no_assessments_message(self):
+        """Test empty state message when no assessments exist"""
+        Assessment.objects.all().delete()
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, 'No assessments yet')
+    
+    def test_submission_status_pending_for_new_assessment(self):
+        """Test that pending submissions show 'Pending' tag"""
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, 'Pending')
+        self.assertNotContains(response, 'Submitted')
+    
+    def test_submission_status_shows_submitted(self):
+        """Test that submitted assignments show submission details"""
+        submission = Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student,
+            content='def factorial(n): return 1 if n <= 1 else n * factorial(n-1)',
+            submitted_at=timezone.now(),
+            status='submitted'
+        )
+        
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, 'Submitted')
+        self.assertContains(response, submission.submitted_at.strftime("%b %d, %Y %H:%M"))
+    
+    def test_submission_shows_graded_status(self):
+        """Test that graded submissions show score"""
+        submission = Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student,
+            content='def factorial(n): return 1 if n <= 1 else n * factorial(n-1)',
+            submitted_at=timezone.now(),
+            status='graded',
+            total_score=85,
+            final_score=85,
+            feedback='Good work! Could improve base case explanation.'
+        )
+        
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, 'Score: 85/100')
+        self.assertContains(response, 'Good work!')
+    
+    def test_late_submission_warning_displayed(self):
+        """Test that late submission warning is shown for overdue assessments"""
+        self.assessment.due_date = timezone.now() - timedelta(days=1)
+        self.assessment.save()
+        
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, 'Late:')
+        self.assertContains(response, '10%/day deduction')
+    
+    def test_closed_assessment_shows_closed_status(self):
+        """Test that closed assessments (beyond max late days) show 'Closed'"""
+        self.assessment.due_date = timezone.now() - timedelta(days=5)
+        self.assessment.max_late_days = 3
+        self.assessment.save()
+        
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, 'Closed')
+        self.assertNotContains(response, 'Submit')
+    
+    def test_grace_period_info_displayed(self):
+        """Test that grace period information is shown"""
+        response = self.client.get('/student/assignments/')
+        self.assertContains(response, 'Grace: 24h')
+        self.assertContains(response, 'Max late: 3 day(s)')
+    
+    def test_assessment_type_icons_and_styles(self):
+        """Test different assessment types display correct icons and styles"""
+        assessment_types = [
+            ('assignment', '📝', '#dbeafe'),
+            ('quiz', '❓', '#fef9c3'),
+            ('mid', '📖', '#fde68a'),
+            ('ct', '✏️', '#d1fae5')
+        ]
+        
+        for atype, icon, bg_color in assessment_types:
+            assessment = Assessment.objects.create(
+                title=f'{atype.title()} Test',
+                assessment_type=atype,
+                course=self.course,
+                total_marks=50
+            )
+            response = self.client.get('/student/assignments/')
+            self.assertContains(response, icon)
+            assessment.delete()
+
+
+class StudentSubmissionAPITest(TestCase):
+    
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='teststudent',
+            password='testpass123'
+        )
+        self.student = Student.objects.create(
+            user=self.user,
+            student_id='STU002'
+        )
+        self.course = Course.objects.create(
+            code='CSE201',
+            name='Data Structures'
+        )
+        Enrollment.objects.create(
+            student=self.student,
+            course=self.course
+        )
+        self.assessment = Assessment.objects.create(
+            title='Linked List Implementation',
+            assessment_type='assignment',
+            course=self.course,
+            total_marks=50
+        )
+        
+        self.client = Client()
+        self.client.login(username='teststudent', password='testpass123')
+    
+    def test_successful_submission_with_text_only(self):
+        """Test submitting an assignment with text answer only"""
+        response = self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {
+                'content': 'class Node:\n    def __init__(self, data):\n        self.data = data\n        self.next = None'
+            },
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify submission was created
+        submission = Submission.objects.get(
+            assessment=self.assessment,
+            student=self.student
+        )
+        self.assertIsNotNone(submission.content)
+        self.assertEqual(submission.status, 'submitted')
+    
+    def test_successful_submission_with_file_only(self):
+        """Test submitting an assignment with file attachment only"""
+        test_file = SimpleUploadedFile(
+            'solution.py',
+            b'def reverse_linked_list(head):\n    prev = None\n    current = head\n    while current:\n        next_temp = current.next\n        current.next = prev\n        prev = current\n        current = next_temp\n    return prev',
+            content_type='text/x-python'
+        )
+        
+        response = self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {'submitted_file': test_file},
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        submission = Submission.objects.get(
+            assessment=self.assessment,
+            student=self.student
+        )
+        self.assertIsNotNone(submission.submitted_file)
+    
+    def test_submission_with_both_text_and_file(self):
+        """Test submitting with both text and file"""
+        test_file = SimpleUploadedFile(
+            'solution.txt',
+            b'Algorithm explanation',
+            content_type='text/plain'
+        )
+        
+        response = self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {
+                'content': 'This is my solution approach...',
+                'submitted_file': test_file
+            },
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+    
+    def test_submission_without_content_or_file_fails(self):
+        """Test that submission fails when no content or file provided"""
+        response = self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {},
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('Please provide either answer text or a file', data['error'])
+    
+    def test_cannot_submit_twice(self):
+        """Test that student cannot submit the same assessment twice"""
+        # First submission
+        self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {'content': 'First submission'},
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        # Second submission attempt
+        response = self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {'content': 'Second submission'},
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('already submitted', data['error'])
+    
+    def test_late_submission_with_deduction(self):
+        """Test late submission calculates proper deduction"""
+        self.assessment.due_date = timezone.now() - timedelta(days=2)
+        self.assessment.late_deduction_value = 10
+        self.assessment.late_deduction_type = 'percent'
+        self.assessment.max_late_days = 5
+        self.assessment.save()
+        
+        response = self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {'content': 'Late submission content'},
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        submission = Submission.objects.get(
+            assessment=self.assessment,
+            student=self.student
+        )
+        self.assertTrue(submission.is_late)
+        self.assertGreater(submission.late_deduction, 0)
+    
+    def test_submission_beyond_max_late_days_blocked(self):
+        """Test submission is blocked when beyond max late days"""
+        self.assessment.due_date = timezone.now() - timedelta(days=10)
+        self.assessment.max_late_days = 3
+        self.assessment.save()
+        
+        response = self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {'content': 'Too late submission'},
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('submission period has closed', data['error'])
+    
+    def test_file_size_limit(self):
+        """Test that large files are rejected"""
+        large_file = SimpleUploadedFile(
+            'large_file.pdf',
+            b'x' * (11 * 1024 * 1024),  # 11 MB
+            content_type='application/pdf'
+        )
+        
+        response = self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {'submitted_file': large_file},
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('exceeds maximum allowed size', data['error'])
+    
+    def test_invalid_file_type_rejected(self):
+        """Test that invalid file types are rejected"""
+        invalid_file = SimpleUploadedFile(
+            'malicious.exe',
+            b'fake executable content',
+            content_type='application/x-msdownload'
+        )
+        
+        response = self.client.post(
+            f'/student/assignments/{self.assessment.id}/submit/',
+            {'submitted_file': invalid_file},
+            HTTP_X_CSRFTOKEN='dummy'
+        )
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('File type not allowed', data['error'])
+
+
+class SubmissionModelTest(TestCase):
+    
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='test')
+        self.student = Student.objects.create(user=self.user)
+        self.course = Course.objects.create(code='TEST101', name='Test Course')
+        self.assessment = Assessment.objects.create(
+            title='Test Assessment',
+            course=self.course,
+            total_marks=100
+        )
+    
+    def test_submission_string_representation(self):
+        """Test submission's string representation"""
+        submission = Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student,
+            content='Test content'
+        )
+        expected = f"{self.student.user.username} - {self.assessment.title}"
+        self.assertEqual(str(submission), expected)
+    
+    def test_calculate_late_deduction_percent(self):
+        """Test late deduction calculation with percentage"""
+        self.assessment.late_deduction_value = 10
+        self.assessment.late_deduction_type = 'percent'
+        self.assessment.due_date = timezone.now() - timedelta(days=2)
+        self.assessment.save()
+        
+        submission = Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student,
+            content='Content',
+            submitted_at=timezone.now()
+        )
+        
+        # Should deduct 20% (10% * 2 days)
+        expected_deduction = self.assessment.total_marks * 0.20
+        self.assertAlmostEqual(submission.late_deduction, expected_deduction, places=2)
+    
+    def test_calculate_late_deduction_fixed_marks(self):
+        """Test late deduction with fixed marks deduction"""
+        self.assessment.late_deduction_value = 5
+        self.assessment.late_deduction_type = 'marks'
+        self.assessment.due_date = timezone.now() - timedelta(days=3)
+        self.assessment.save()
+        
+        submission = Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student,
+            content='Content',
+            submitted_at=timezone.now()
+        )
+        
+        # Should deduct 15 marks (5 * 3 days)
+        self.assertEqual(submission.late_deduction, 15)
+    
+    def test_hours_late_calculation(self):
+        """Test hours late calculation"""
+        due_date = timezone.now() - timedelta(hours=25)
+        self.assessment.due_date = due_date
+        self.assessment.save()
+        
+        submission = Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student,
+            content='Content',
+            submitted_at=timezone.now()
+        )
+        
+        self.assertGreater(submission.hours_late, 24)
+        self.assertLess(submission.hours_late, 26)
+
+
+
+
+
+
+
+
+
+
+
+
+Selenium Tests
+
+from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from django.contrib.auth.models import User
+from student.models import Student, Course, Enrollment, Assessment, Question, Submission
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
+from datetime import timedelta
+import time
+import os
+
+
+class SeleniumAssignmentsTest(StaticLiveServerTestCase):
+    
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')  # Run in headless mode for CI
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        cls.selenium = webdriver.Chrome(options=chrome_options)
+        cls.selenium.implicitly_wait(10)
+    
+    @classmethod
+    def tearDownClass(cls):
+        cls.selenium.quit()
+        super().tearDownClass()
+    
+    def setUp(self):
+        # Create test user
+        self.user = User.objects.create_user(
+            username='seleniumstudent',
+            password='seleniumpass123',
+            email='selenium@test.com'
+        )
+        
+        # Create student profile
+        self.student = Student.objects.create(
+            user=self.user,
+            student_id='SEL001',
+            department='CSE',
+            semester='Fall 2024'
+        )
+        
+        # Create course
+        self.course = Course.objects.create(
+            code='SEL101',
+            name='Selenium Testing Course',
+            department='CSE',
+            credits=3
+        )
+        
+        # Enroll student
+        self.enrollment = Enrollment.objects.create(
+            student=self.student,
+            course=self.course,
+            semester='Fall 2024'
+        )
+        
+        # Create assessment
+        self.assessment = Assessment.objects.create(
+            title='Selenium WebDriver Assignment',
+            description='Write tests using Selenium WebDriver',
+            assessment_type='assignment',
+            course=self.course,
+            due_date=timezone.now() + timedelta(days=7),
+            total_marks=100
+        )
+        
+        # Create question
+        self.question = Question.objects.create(
+            assessment=self.assessment,
+            text='Write a Selenium test for login functionality',
+            max_marks=100,
+            order=1
+        )
+        
+        # Login
+        self.selenium.get(f'{self.live_server_url}/student/login/')
+        username_input = self.selenium.find_element(By.NAME, 'username')
+        password_input = self.selenium.find_element(By.NAME, 'password')
+        username_input.send_keys('seleniumstudent')
+        password_input.send_keys('seleniumpass123')
+        self.selenium.find_element(By.XPATH, '//button[@type="submit"]').click()
+        
+        # Wait for login to complete
+        WebDriverWait(self.selenium, 10).until(
+            EC.url_contains('/student/dashboard/')
+        )
+    
+    def test_assignments_page_loads(self):
+        """Test that assignments page loads correctly"""
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Check page title
+        title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertIn('Assignments & Assessments', title.text)
+        
+        # Check assessment is displayed
+        assessment_title = self.selenium.find_element(By.CLASS_NAME, 'list-title')
+        self.assertEqual(assessment_title.text, self.assessment.title)
+    
+    def test_assessment_details_displayed(self):
+        """Test that assessment details are correctly displayed"""
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Check course code
+        list_meta = self.selenium.find_element(By.CLASS_NAME, 'list-meta')
+        self.assertIn(self.course.code, list_meta.text)
+        
+        # Check total marks
+        self.assertIn('Total: 100 marks', list_meta.text)
+        
+        # Check question count
+        self.assertIn('1 question(s)', list_meta.text)
+        
+        # Check question text
+        question_text = self.selenium.find_element(By.XPATH, "//div[contains(@style, 'font-size:13px;font-weight:600;')]")
+        self.assertIn(self.question.text, question_text.text)
+    
+    def test_submit_assignment_with_text(self):
+        """Test submitting an assignment with text answer"""
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Click submit button
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Submit')]")
+        submit_btn.click()
+        
+        # Wait for modal
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'submitModal'))
+        )
+        
+        # Enter answer text
+        answer_textarea = self.selenium.find_element(By.NAME, 'content')
+        answer_textarea.send_keys('''
+        from selenium import webdriver
+        from selenium.webdriver.common.by import By
+        
+        def test_login():
+            driver = webdriver.Chrome()
+            driver.get("https://example.com/login")
+            driver.find_element(By.NAME, "username").send_keys("testuser")
+            driver.find_element(By.NAME, "password").send_keys("password")
+            driver.find_element(By.XPATH, "//button[@type='submit']").click()
+            assert "Dashboard" in driver.title
+            driver.quit()
+        ''')
+        
+        # Submit
+        submit_btn_modal = self.selenium.find_element(By.ID, 'submitBtn')
+        submit_btn_modal.click()
+        
+        # Wait for page reload
+        WebDriverWait(self.selenium, 10).until(
+            EC.staleness_of_element(submit_btn_modal)
+        )
+        
+        # Check success message (submitted status)
+        submitted_tag = WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Submitted')]"))
+        )
+        self.assertIsNotNone(submitted_tag)
+    
+    def test_submit_assignment_with_file(self):
+        """Test submitting an assignment with file upload"""
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Click submit button
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Submit')]")
+        submit_btn.click()
+        
+        # Wait for modal
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'submitModal'))
+        )
+        
+        # Upload file
+        file_input = self.selenium.find_element(By.NAME, 'submitted_file')
+        test_file_path = os.path.join(os.path.dirname(__file__), 'test_files', 'selenium_test.py')
+        
+        # Create test file if it doesn't exist
+        os.makedirs(os.path.dirname(test_file_path), exist_ok=True)
+        with open(test_file_path, 'w') as f:
+            f.write('''
+from selenium import webdriver
+import unittest
+
+class SeleniumTest(unittest.TestCase):
+    def test_google_search(self):
+        driver = webdriver.Chrome()
+        driver.get("https://www.google.com")
+        self.assertIn("Google", driver.title)
+        driver.quit()
+''')
+        
+        file_input.send_keys(test_file_path)
+        
+        # Submit
+        submit_btn_modal = self.selenium.find_element(By.ID, 'submitBtn')
+        submit_btn_modal.click()
+        
+        # Wait for page reload
+        WebDriverWait(self.selenium, 10).until(
+            EC.staleness_of_element(submit_btn_modal)
+        )
+        
+        # Check submitted status
+        submitted_tag = WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Submitted')]"))
+        )
+        self.assertIsNotNone(submitted_tag)
+        
+        # Check download link appears
+        download_link = self.selenium.find_element(By.XPATH, "//a[contains(text(), 'Download File')]")
+        self.assertIsNotNone(download_link)
+    
+    def test_cannot_submit_without_answer_or_file(self):
+        """Test that submission fails when no answer or file provided"""
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Click submit button
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Submit')]")
+        submit_btn.click()
+        
+        # Wait for modal
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'submitModal'))
+        )
+        
+        # Submit without filling anything
+        submit_btn_modal = self.selenium.find_element(By.ID, 'submitBtn')
+        submit_btn_modal.click()
+        
+        # Check error message
+        error_div = WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'submitError'))
+        )
+        self.assertIn('Please type an answer or upload a file', error_div.text)
+    
+    def test_view_submitted_assignment_details(self):
+        """Test viewing details of a submitted assignment"""
+        # Create a submission first
+        submission = Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student,
+            content='Previous submission content',
+            submitted_at=timezone.now(),
+            status='submitted'
+        )
+        
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Check that submit button is not shown (already submitted)
+        submit_buttons = self.selenium.find_elements(By.XPATH, "//button[contains(text(), 'Submit')]")
+        self.assertEqual(len(submit_buttons), 0)
+        
+        # Check submitted status
+        submitted_tag = self.selenium.find_element(By.XPATH, "//span[contains(text(), 'Submitted')]")
+        self.assertIsNotNone(submitted_tag)
+        
+        # Check submission timestamp
+        self.assertIn(submission.submitted_at.strftime("%b %d, %Y"), self.selenium.page_source)
+    
+    def test_graded_assignment_display(self):
+        """Test display of graded assignment with score and feedback"""
+        # Create graded submission
+        submission = Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student,
+            content='Good solution',
+            submitted_at=timezone.now(),
+            status='graded',
+            total_score=85,
+            final_score=85,
+            feedback='Excellent work! Could improve error handling.'
+        )
+        
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Check score display
+        score_tag = self.selenium.find_element(By.XPATH, "//span[contains(text(), 'Score: 85/100')]")
+        self.assertIsNotNone(score_tag)
+        
+        # Check feedback
+        feedback_div = self.selenium.find_element(By.XPATH, "//div[contains(text(), 'Feedback:')]")
+        self.assertIn('Excellent work!', feedback_div.text)
+    
+    def test_late_submission_warning(self):
+        """Test late submission warning is displayed"""
+        self.assessment.due_date = timezone.now() - timedelta(days=1)
+        self.assessment.late_deduction_value = 10
+        self.assessment.late_deduction_type = 'percent'
+        self.assessment.save()
+        
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Check late warning in the list item
+        late_warning = self.selenium.find_element(By.XPATH, "//div[contains(text(), 'Late:')]")
+        self.assertIn('10%/day deduction', late_warning.text)
+        
+        # Click submit button
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Submit Late')]")
+        submit_btn.click()
+        
+        # Wait for modal
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'submitModal'))
+        )
+        
+        # Check late warning in modal
+        modal_late_warning = self.selenium.find_element(By.ID, 'lateWarning')
+        self.assertTrue(modal_late_warning.is_displayed())
+        self.assertIn('Late submission', modal_late_warning.text)
+    
+    def test_closed_assessment_no_submit_button(self):
+        """Test that closed assessment doesn't show submit button"""
+        self.assessment.due_date = timezone.now() - timedelta(days=10)
+        self.assessment.max_late_days = 3
+        self.assessment.save()
+        
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Check closed status
+        closed_status = self.selenium.find_element(By.XPATH, "//span[contains(text(), 'Closed')]")
+        self.assertIsNotNone(closed_status)
+        
+        # Check no submit button
+        submit_buttons = self.selenium.find_elements(By.XPATH, "//button[contains(text(), 'Submit')]")
+        self.assertEqual(len(submit_buttons), 0)
+    
+    def test_multiple_assessments_display(self):
+        """Test display of multiple assessments"""
+        # Create second assessment
+        assessment2 = Assessment.objects.create(
+            title='Unit Testing Assignment',
+            description='Write unit tests for Python functions',
+            assessment_type='assignment',
+            course=self.course,
+            due_date=timezone.now() + timedelta(days=14),
+            total_marks=50
+        )
+        
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Check both assessments are displayed
+        list_items = self.selenium.find_elements(By.CLASS_NAME, 'list-item')
+        self.assertEqual(len(list_items), 2)
+        
+        titles = self.selenium.find_elements(By.CLASS_NAME, 'list-title')
+        self.assertIn(self.assessment.title, [t.text for t in titles])
+        self.assertIn(assessment2.title, [t.text for t in titles])
+    
+    def test_assessment_filtering_by_type(self):
+        """Test that assessment types are properly styled and labeled"""
+        quiz_assessment = Assessment.objects.create(
+            title='Python Quiz',
+            assessment_type='quiz',
+            course=self.course,
+            total_marks=30
+        )
+        
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Check assignment type tag
+        assignment_tag = self.selenium.find_element(By.XPATH, f"//span[contains(text(), 'Assignment')]")
+        self.assertIsNotNone(assignment_tag)
+        
+        # Check quiz type tag
+        quiz_tag = self.selenium.find_element(By.XPATH, f"//span[contains(text(), 'Quiz')]")
+        self.assertIsNotNone(quiz_tag)
+    
+    def test_modal_close_functionality(self):
+        """Test that submit modal can be closed"""
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Open modal
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Submit')]")
+        submit_btn.click()
+        
+        # Wait for modal
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'submitModal'))
+        )
+        
+        # Close modal
+        close_btn = self.selenium.find_element(By.CLASS_NAME, 'modal-close')
+        close_btn.click()
+        
+        # Wait for modal to disappear
+        WebDriverWait(self.selenium, 10).until(
+            EC.invisibility_of_element_located((By.ID, 'submitModal'))
+        )
+        
+        # Check modal is hidden
+        modal = self.selenium.find_element(By.ID, 'submitModal')
+        self.assertFalse(modal.is_displayed())
+    
+    def test_responsive_design(self):
+        """Test that page is responsive on different viewport sizes"""
+        # Test on mobile viewport
+        self.selenium.set_window_size(375, 667)  # iPhone SE size
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Check content is visible
+        page_title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertTrue(page_title.is_displayed())
+        
+        # Test on tablet viewport
+        self.selenium.set_window_size(768, 1024)  # iPad size
+        self.selenium.refresh()
+        
+        # Check content is visible
+        page_title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertTrue(page_title.is_displayed())
+        
+        # Test on desktop viewport
+        self.selenium.set_window_size(1920, 1080)
+        self.selenium.refresh()
+        
+        # Check content is visible
+        page_title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertTrue(page_title.is_displayed())
+
+
+class SeleniumSubmissionWorkflowTest(StaticLiveServerTestCase):
+    """Test complete submission workflow"""
+    
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        cls.selenium = webdriver.Chrome(options=chrome_options)
+        cls.selenium.implicitly_wait(10)
+    
+    @classmethod
+    def tearDownClass(cls):
+        cls.selenium.quit()
+        super().tearDownClass()
+    
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='workflowuser',
+            password='workflow123'
+        )
+        self.student = Student.objects.create(
+            user=self.user,
+            student_id='WF001'
+        )
+        self.course = Course.objects.create(
+            code='WF101',
+            name='Workflow Testing'
+        )
+        Enrollment.objects.create(
+            student=self.student,
+            course=self.course
+        )
+        self.assessment = Assessment.objects.create(
+            title='Complete Workflow Assignment',
+            assessment_type='assignment',
+            course=self.course,
+            total_marks=100
+        )
+        
+        # Login
+        self.selenium.get(f'{self.live_server_url}/student/login/')
+        username_input = self.selenium.find_element(By.NAME, 'username')
+        password_input = self.selenium.find_element(By.NAME, 'password')
+        username_input.send_keys('workflowuser')
+        password_input.send_keys('workflow123')
+        self.selenium.find_element(By.XPATH, '//button[@type="submit"]').click()
+    
+    def test_complete_submission_to_grading_workflow(self):
+        """Test complete workflow from submission to grading"""
+        # Step 1: Navigate to assignments
+        self.selenium.get(f'{self.live_server_url}/student/assignments/')
+        
+        # Step 2: Submit assignment
+        submit_btn = self.selenium.find_element(By.XPATH, "//button[contains(text(), 'Submit')]")
+        submit_btn.click()
+        
+        # Step 3: Fill submission
+        WebDriverWait(self.selenium, 10).until(
+            EC.visibility_of_element_located((By.ID, 'submitModal'))
+        )
+        
+        answer_textarea = self.selenium.find_element(By.NAME, 'content')
+        answer_textarea.send_keys('''
+        def test_workflow():
+            # Test implementation
+            assert True
+        ''')
+        
+        submit_btn_modal = self.selenium.find_element(By.ID, 'submitBtn')
+        submit_btn_modal.click()
+        
+        # Step 4: Verify submission success
+        WebDriverWait(self.selenium, 10).until(
+            EC.staleness_of_element(submit_btn_modal)
+        )
+        
+        submitted_tag = self.selenium.find_element(By.XPATH, "//span[contains(text(), 'Submitted')]")
+        self.assertIsNotNone(submitted_tag)
+        
+        # Step 5: Simulate grading (in database)
+        submission = Submission.objects.get(
+            assessment=self.assessment,
+            student=self.student
+        )
+        submission.status = 'graded'
+        submission.total_score = 92
+        submission.final_score = 92
+        submission.feedback = 'Great work! Your implementation is correct and efficient.'
+        submission.save()
+        
+        # Step 6: Refresh page to see grading
+        self.selenium.refresh()
+        
+        # Step 7: Verify grading display
+        score_tag = WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Score: 92/100')]"))
+        )
+        self.assertIsNotNone(score_tag)
+        
+        feedback_div = self.selenium.find_element(By.XPATH, "//div[contains(text(), 'Feedback:')]")
+        self.assertIn('Great work!', feedback_div.text)
+
+
+
+

@@ -126,7 +126,16 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
       <span class="nav-icon"></span> Study Materials
     </a>
     <a href="{% url 'student_notifications' %}" class="{% block nav_notifications %}{% endblock %}">
-      <span class="nav-icon"></span> Notifications
+      <span class="nav-icon" style="position:relative;display:inline-block;">
+        <span id="sidebarBadge"
+              style="display:none;position:absolute;top:-5px;right:-6px;
+                     background:#ef4444;color:#fff;font-size:9px;font-weight:700;
+                     min-width:16px;height:16px;border-radius:8px;
+                     display:none;align-items:center;justify-content:center;padding:0 3px;">
+          0
+        </span>
+      </span>
+      Notifications
     </a>
   </nav>
   <div class="sidebar-footer">
@@ -139,6 +148,25 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
 <main class="main">
   {% block content %}{% endblock %}
 </main>
+
+<script>
+async function refreshBadge() {
+  try {
+    const res  = await fetch("{% url 'get_unread_count' %}");
+    const data = await res.json();
+    const b    = document.getElementById('sidebarBadge');
+    if (!b) return;
+    if (data.count > 0) {
+      b.textContent   = data.count > 9 ? '9+' : data.count;
+      b.style.display = 'flex';
+    } else {
+      b.style.display = 'none';
+    }
+  } catch(e) {}
+}
+refreshBadge();
+setInterval(refreshBadge, 30000);  // refresh every 30 seconds
+</script>
 
 <script>
 function getCsrf(){return document.cookie.split(';').find(c=>c.trim().startsWith('csrftoken='))?.split('=')[1]||'';}

@@ -47,7 +47,9 @@ urlpatterns = [
     path('student/submissions/', views.student_submissions, name='student_submissions'),
     path('student/submissions/<int:assessment_id>/submit/', views.submit_assessment, name='submit_assessment'),
     path('student/clo-results/', views.student_clo_results, name='student_clo_results'),
-    path('student/notifications/', views.student_notifications, name='student_notifications'),
+    path('student/notifications/',              views.student_notifications, name='student_notifications'),
+    path('student/notifications/unread-count/', views.get_unread_count,      name='get_unread_count'),
+    path('student/notifications/mark-all-read/',views.mark_all_read,         name='mark_all_read'),
     path('student/assignments/', views.student_assignments, name='student_assignments'),
     path('student/assignments/<int:assignment_id>/submit/', views.submit_assignment, name='submit_assignment'),
 ]

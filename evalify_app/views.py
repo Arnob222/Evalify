@@ -4,8 +4,8 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.db.models import Count
 import json
-from .models import (User, Course, CLO, PLO, Assessment, Question,
-                     Enrollment, Submission, QuestionGrade, Announcement, StudyMaterial)
+from .models import (User, Course, CLO, PLO, Assessment, Question,Enrollment, Submission, QuestionGrade, Announcement, StudyMaterial, Notification )
+from .notifications import (notify_grade_released, notify_new_assignment, notify_new_material, notify_announcement)
 
 
 #Home Redirect 
@@ -330,11 +330,18 @@ def grade_submission(request, sub_id):
                 submission=sub, question=q, defaults={'marks_obtained': marks}
             )
             total += marks
+ 
+        was_graded_before = sub.status in ('graded', 'flagged')  # ← নতুন
+ 
         status = 'flagged' if (sub.plagiarism_score > 30 or sub.ai_content_score > 50) else 'graded'
         sub.total_score = total
-        sub.feedback = data.get('feedback', '')
-        sub.status = status
+        sub.feedback    = data.get('feedback', '')
+        sub.status      = status
         sub.save()
+ 
+        if not was_graded_before:
+            notify_grade_released(sub)
+ 
         return JsonResponse({'success': True})
     return JsonResponse({'error': 'POST required'}, status=400)
 
@@ -422,6 +429,7 @@ def create_announcement(request):
             course=course, title=data['title'], content=data['content'],
             priority=data.get('priority', 'medium'), created_by=request.user
         )
+        notify_announcement(ann) 
         return JsonResponse({'success': True, 'id': ann.id})
     return JsonResponse({'error': 'POST required'}, status=400)
 
@@ -576,12 +584,16 @@ def student_clo_results(request):
 
 @student_required
 def student_notifications(request):
-    enrollments = Enrollment.objects.filter(student=request.user)
-    courses = [e.course for e in enrollments]
-    announcements = Announcement.objects.filter(
-        course__in=courses
-    ).select_related('course').order_by('-created_at')
-    return render(request, 'student/notifications.html', {'announcements': announcements})
+    notifs      = Notification.objects.filter(
+        recipient=request.user
+    ).select_related('course', 'assessment')
+    unread_count = notifs.filter(is_read=False).count()
+    # mark all read when page opens
+    notifs.filter(is_read=False).update(is_read=True)
+    return render(request, 'student/notifications.html', {
+        'notifs':       notifs,
+        'unread_count': unread_count,
+    })
 
 
 
@@ -810,7 +822,10 @@ def create_assignment(request):
         # Use manual total_marks if provided and no questions, else sum of questions
         manual_total = int(data.get('total_marks', 0))
         assignment.total_marks = total if total > 0 else manual_total
-        assignment.save()
+
+        if status == 'published':
+            notify_new_assignment(assignment)
+
         type_labels = dict(Assessment.TYPE_CHOICES)
         return JsonResponse({
             'success': True,
@@ -844,6 +859,8 @@ def publish_assessment(request, assignment_id):
     )
     assessment.status = 'published'
     assessment.save()
+    notify_new_assignment(assessment)
+ 
     return JsonResponse({'success': True})
 
 
@@ -886,3 +903,15 @@ def submit_assignment(request, assignment_id):
         )
         return JsonResponse({'success': True})
     return JsonResponse({'error': 'POST required'}, status=400)
+
+
+@student_required
+def get_unread_count(request):
+    count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+    return JsonResponse({'count': count})
+ 
+ 
+@student_required
+def mark_all_read(request):
+    Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
+    return JsonResponse({'success': True})

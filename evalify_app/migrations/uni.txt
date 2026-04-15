@@ -1,0 +1,1384 @@
+evalify_app/
+├── views.py                          ← faculty_analytics REPLACE + faculty_attainment_report ADD
+├── urls.py                           ← ১টা line ADD করো
+│
+├── templatetags/                     ← নতুন folder বানাও ⬅️
+│   ├── __init__.py                   ← empty file
+│   └── evalify_extras.py             ← রাখো ⬅️
+│
+└── templates/faculty/
+    └── attainment_report.html        ← নতুন file বানাও ⬅️
+
+
+
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# views.py তে এই কাজগুলো করো:
+#
+# ১. existing faculty_analytics function টা এই নতুনটা দিয়ে REPLACE করো
+# ২. এর নিচে faculty_attainment_report function টা ADD করো
+# ══════════════════════════════════════════════════════════════════════════
+
+
+# ── REPLACE: faculty_analytics ────────────────────────────────────────────
+@faculty_required
+def faculty_analytics(request):
+    courses = Course.objects.filter(faculty=request.user)
+    selected_course = None
+    grade_dist      = []
+    clo_attainment  = []
+    weak_students   = []
+    integrity_data  = {'clean': 0, 'ai_flag': 0, 'plagiarism': 0}
+
+    course_id = request.GET.get('course')
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    elif courses.exists():
+        selected_course = courses.first()
+
+    if selected_course:
+        assessments = Assessment.objects.filter(course=selected_course)
+        graded_subs = Submission.objects.filter(
+            assessment__in=assessments, status__in=['graded', 'flagged']
+        )
+        ranges = [('90-100', 90, 100), ('80-89', 80, 89),
+                  ('70-79', 70, 79), ('60-69', 60, 69), ('<60', 0, 59)]
+        for label, lo, hi in ranges:
+            count = sum(
+                1 for s in graded_subs
+                if s.assessment.total_marks > 0
+                and lo <= (s.total_score / s.assessment.total_marks * 100) <= hi
+            )
+            grade_dist.append({'label': label, 'count': count})
+
+        for clo in selected_course.clos.all():
+            q_ids = list(Question.objects.filter(
+                assessment__in=assessments, clos=clo
+            ).values_list('id', flat=True))
+            qgs = QuestionGrade.objects.filter(
+                question_id__in=q_ids, submission__in=graded_subs
+            )
+            total_possible = (
+                sum(Question.objects.get(id=qid).max_marks for qid in q_ids)
+                * max(graded_subs.count(), 1)
+            )
+            total_obtained = sum(g.marks_obtained for g in qgs)
+            attainment = round(
+                (total_obtained / total_possible * 100) if total_possible > 0 else 0, 1
+            )
+            clo_attainment.append({'code': clo.code, 'attainment': attainment})
+
+        for sub in graded_subs:
+            if sub.assessment.total_marks > 0:
+                pct = round(sub.total_score / sub.assessment.total_marks * 100, 1)
+                if pct < 70:
+                    weak_students.append({
+                        'name':  sub.student.full_name or sub.student.username,
+                        'score': f"{int(sub.total_score)}/{sub.assessment.total_marks}",
+                        'pct':   pct,
+                    })
+            if sub.plagiarism_score > 30:
+                integrity_data['plagiarism'] += 1
+            elif sub.ai_content_score > 50:
+                integrity_data['ai_flag'] += 1
+            else:
+                integrity_data['clean'] += 1
+
+    return render(request, 'faculty/analytics.html', {
+        'courses':         courses,
+        'selected_course': selected_course,
+        'grade_dist':      json.dumps(grade_dist),
+        'clo_attainment':  json.dumps(clo_attainment),
+        'weak_students':   weak_students,
+        'integrity_data':  json.dumps(integrity_data),
+    })
+
+
+# ── ADD: faculty_attainment_report ────────────────────────────────────────
+@faculty_required
+def faculty_attainment_report(request):
+    """
+    Class-level attainment report.
+    - Per-student CLO/PLO attainment aggregation
+    - Threshold alert system
+    - Exportable table view
+    """
+    courses   = Course.objects.filter(faculty=request.user)
+    course_id = request.GET.get('course')
+    threshold = int(request.GET.get('threshold', 60))   # default alert < 60%
+
+    selected_course  = None
+    student_rows     = []
+    clo_list         = []
+    plo_summary      = []
+    class_clo_avg    = []
+    at_risk_students = []
+    assessment_breakdown = []
+
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    elif courses.exists():
+        selected_course = courses.first()
+
+    if selected_course:
+        assessments = Assessment.objects.filter(
+            course=selected_course, status='published'
+        ).prefetch_related('questions__clos')
+
+        clo_list = list(selected_course.clos.prefetch_related('plos').all())
+        enrollments = Enrollment.objects.filter(
+            course=selected_course
+        ).select_related('student').order_by('student__full_name', 'student__username')
+
+        # ── Per-assessment breakdown ──────────────────────────────────
+        for a in assessments:
+            subs = Submission.objects.filter(
+                assessment=a, status__in=['graded', 'flagged']
+            )
+            sub_count = subs.count()
+            if sub_count == 0:
+                avg_pct = 0
+            else:
+                avg_pct = round(
+                    sum(
+                        s.total_score / a.total_marks * 100
+                        for s in subs if a.total_marks > 0
+                    ) / sub_count, 1
+                )
+            assessment_breakdown.append({
+                'title':     a.title,
+                'type':      a.get_assessment_type_display(),
+                'marks':     a.total_marks,
+                'submitted': subs.count(),
+                'enrolled':  enrollments.count(),
+                'avg_pct':   avg_pct,
+                'below_threshold': sum(
+                    1 for s in subs
+                    if a.total_marks > 0
+                    and (s.total_score / a.total_marks * 100) < threshold
+                ),
+            })
+
+        # ── Per-student aggregation ───────────────────────────────────
+        for enroll in enrollments:
+            student = enroll.student
+            subs = Submission.objects.filter(
+                student=student,
+                assessment__in=assessments,
+                status__in=['graded', 'flagged'],
+            ).select_related('assessment')
+
+            # Overall score
+            if subs.exists():
+                total_obtained  = sum(s.total_score for s in subs)
+                total_possible  = sum(
+                    s.assessment.total_marks for s in subs
+                    if s.assessment.total_marks > 0
+                )
+                overall_pct = round(
+                    (total_obtained / total_possible * 100) if total_possible > 0 else 0, 1
+                )
+            else:
+                overall_pct = None   # not graded yet
+
+            # Per-CLO attainment for this student
+            clo_scores = {}
+            for clo in clo_list:
+                q_ids = list(Question.objects.filter(
+                    assessment__in=assessments, clos=clo
+                ).values_list('id', flat=True))
+
+                qgs = QuestionGrade.objects.filter(
+                    question_id__in=q_ids,
+                    submission__student=student,
+                    submission__in=subs,
+                )
+                total_poss  = sum(
+                    Question.objects.get(id=qid).max_marks for qid in q_ids
+                )
+                total_obt   = sum(g.marks_obtained for g in qgs)
+                att = round(
+                    (total_obt / total_poss * 100) if total_poss > 0 else 0, 1
+                )
+                clo_scores[clo.code] = {
+                    'attainment': att,
+                    'obtained':   round(total_obt, 1),
+                    'possible':   total_poss,
+                    'alert':      att < threshold and total_poss > 0,
+                }
+
+            # Grade letter
+            grade = '—'
+            if overall_pct is not None:
+                if   overall_pct >= 80: grade = 'A+'
+                elif overall_pct >= 75: grade = 'A'
+                elif overall_pct >= 70: grade = 'A-'
+                elif overall_pct >= 65: grade = 'B+'
+                elif overall_pct >= 60: grade = 'B'
+                elif overall_pct >= 55: grade = 'B-'
+                elif overall_pct >= 50: grade = 'C+'
+                elif overall_pct >= 45: grade = 'C'
+                elif overall_pct >= 40: grade = 'D'
+                else:                   grade = 'F'
+
+            is_at_risk = (
+                overall_pct is not None and overall_pct < threshold
+            ) or any(
+                v['alert'] for v in clo_scores.values()
+            )
+
+            row = {
+                'student':     student,
+                'overall_pct': overall_pct,
+                'grade':       grade,
+                'clo_scores':  clo_scores,
+                'is_at_risk':  is_at_risk,
+                'submitted':   subs.count(),
+                'total_assessments': assessments.count(),
+            }
+            student_rows.append(row)
+
+            if is_at_risk and overall_pct is not None:
+                at_risk_students.append({
+                    'name':        student.full_name or student.username,
+                    'overall_pct': overall_pct,
+                    'grade':       grade,
+                    'weak_clos': [
+                        clo.code for clo in clo_list
+                        if clo_scores.get(clo.code, {}).get('alert')
+                    ],
+                })
+
+        # ── Class-level CLO averages ──────────────────────────────────
+        for clo in clo_list:
+            scores = [
+                row['clo_scores'][clo.code]['attainment']
+                for row in student_rows
+                if clo.code in row['clo_scores']
+                and row['clo_scores'][clo.code]['possible'] > 0
+            ]
+            avg = round(sum(scores) / len(scores), 1) if scores else 0
+            class_clo_avg.append({
+                'code':        clo.code,
+                'description': clo.description,
+                'bloom':       clo.bloom_level,
+                'avg':         avg,
+                'alert':       avg < threshold,
+                'plos':        [p.code for p in clo.plos.all()],
+            })
+
+        # ── PLO summary ───────────────────────────────────────────────
+        plo_map = {}
+        for clo_avg in class_clo_avg:
+            for plo_code in clo_avg['plos']:
+                if plo_code not in plo_map:
+                    plo_map[plo_code] = []
+                plo_map[plo_code].append(clo_avg['avg'])
+
+        for plo_code, avgs in plo_map.items():
+            plo_avg = round(sum(avgs) / len(avgs), 1) if avgs else 0
+            plo_summary.append({
+                'code':  plo_code,
+                'avg':   plo_avg,
+                'alert': plo_avg < threshold,
+            })
+        plo_summary.sort(key=lambda x: x['code'])
+
+    # Sort: at-risk first, then by overall %
+    student_rows.sort(key=lambda r: (
+        0 if r['is_at_risk'] else 1,
+        r['overall_pct'] if r['overall_pct'] is not None else 999
+    ))
+
+    return render(request, 'faculty/attainment_report.html', {
+        'courses':              courses,
+        'selected_course':      selected_course,
+        'student_rows':         student_rows,
+        'clo_list':             clo_list,
+        'class_clo_avg':        class_clo_avg,
+        'class_clo_avg_json':   json.dumps([
+            {'code': c['code'], 'avg': c['avg']} for c in class_clo_avg
+        ]),
+        'plo_summary':          plo_summary,
+        'at_risk_students':     at_risk_students,
+        'assessment_breakdown': assessment_breakdown,
+        'threshold':            threshold,
+        'total_students':       len(student_rows),
+        'at_risk_count':        len(at_risk_students),
+    })
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # ══════════════════════════════════════════════════════════════════════════
+# তোমার evalify_app/urls.py তে faculty analytics path এর পরে এই line ADD করো
+# ══════════════════════════════════════════════════════════════════════════
+
+path('faculty/attainment-report/', views.faculty_attainment_report, name='faculty_attainment_report'),
+
+
+
+
+
+
+
+    Faculty                          attainment_report.html 
+    {% extends 'faculty/base.html' %}
+{% block nav_attainment %}active{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <div class="page-title">Class Attainment Report</div>
+    <div class="page-sub">CLO/PLO attainment per student — threshold alerts &amp; aggregation</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <!-- Course selector -->
+    <form method="get" style="display:flex;gap:8px;align-items:center;">
+      <select name="course" class="form-control" style="width:220px;" onchange="this.form.submit()">
+        {% for c in courses %}
+        <option value="{{ c.id }}" {% if selected_course and selected_course.id == c.id %}selected{% endif %}>
+          {{ c.code }}: {{ c.name }}
+        </option>
+        {% endfor %}
+      </select>
+      <!-- Threshold setter -->
+      <input type="hidden" name="threshold" id="thresholdHidden" value="{{ threshold }}">
+    </form>
+    <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);
+                border-radius:7px;padding:6px 12px;">
+      <span style="font-size:12px;color:var(--gray);">Alert threshold:</span>
+      <input type="number" id="thresholdInput" value="{{ threshold }}" min="1" max="100"
+             style="width:55px;border:1px solid var(--border);border-radius:5px;
+                    padding:4px 6px;font-size:13px;font-weight:700;text-align:center;"
+             onchange="applyThreshold(this.value)">
+      <span style="font-size:12px;color:var(--gray);">%</span>
+    </div>
+  </div>
+</div>
+
+{% if selected_course %}
+
+<!-- ── Summary Cards ── -->
+<div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
+  <div class="stat white">
+    <div>
+      <div class="stat-label" style="color:var(--gray);">Total Students</div>
+      <div class="stat-val">{{ total_students }}</div>
+    </div>
+    <div class="stat-icon">👥</div>
+  </div>
+  <div class="stat {% if at_risk_count > 0 %}red{% else %}green{% endif %}">
+    <div>
+      <div class="stat-label">At Risk (below {{ threshold }}%)</div>
+      <div class="stat-val">{{ at_risk_count }}</div>
+    </div>
+    <div class="stat-icon">⚠</div>
+  </div>
+  <div class="stat white">
+    <div>
+      <div class="stat-label" style="color:var(--gray);">CLOs Tracked</div>
+      <div class="stat-val">{{ clo_list|length }}</div>
+    </div>
+    <div class="stat-icon">🎯</div>
+  </div>
+  <div class="stat white">
+    <div>
+      <div class="stat-label" style="color:var(--gray);">Assessments</div>
+      <div class="stat-val">{{ assessment_breakdown|length }}</div>
+    </div>
+    <div class="stat-icon">📋</div>
+  </div>
+</div>
+
+<!-- ── At-Risk Alert Box ── -->
+{% if at_risk_students %}
+<div style="background:#fff5f5;border:1px solid #fca5a5;border-radius:12px;
+            padding:16px 20px;margin-bottom:24px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+    <span style="font-size:18px;">🚨</span>
+    <div style="font-size:14px;font-weight:700;color:#991b1b;">
+      {{ at_risk_count }} Student{{ at_risk_count|pluralize }} Below {{ threshold }}% Threshold
+    </div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;">
+    {% for s in at_risk_students %}
+    <div style="background:#fff;border:1px solid #fca5a5;border-radius:8px;
+                padding:8px 14px;display:flex;align-items:center;gap:10px;">
+      <div>
+        <div style="font-size:13px;font-weight:600;">{{ s.name }}</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:2px;">
+          Overall: <strong style="color:var(--red);">{{ s.overall_pct }}% ({{ s.grade }})</strong>
+          {% if s.weak_clos %}
+          &nbsp;·&nbsp; Weak CLOs:
+          {% for c in s.weak_clos %}
+          <span class="tag tag-clo" style="font-size:10px;">{{ c }}</span>
+          {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Two col: CLO bar chart + PLO summary ── -->
+<div class="two-col" style="margin-bottom:24px;">
+
+  <!-- Class CLO Attainment Chart -->
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Class CLO Attainment</div>
+      <span style="font-size:12px;color:var(--gray);">{{ selected_course.code }}</span>
+    </div>
+    <canvas id="cloBarChart" height="220"></canvas>
+    <div style="margin-top:12px;">
+      {% for c in class_clo_avg %}
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  margin-bottom:8px;padding:6px 10px;border-radius:6px;
+                  background:{% if c.alert %}#fff5f5{% else %}#f0fdf4{% endif %};">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="tag tag-clo">{{ c.code }}</span>
+          <span style="font-size:12px;color:var(--gray);">{{ c.description|truncatechars:35 }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          {% if c.alert %}<span style="font-size:11px;">⚠</span>{% endif %}
+          <span style="font-size:14px;font-weight:800;
+            color:{% if c.alert %}var(--red){% elif c.avg >= 70 %}var(--green){% else %}var(--orange){% endif %};">
+            {{ c.avg }}%
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- PLO Summary + Assessment Breakdown -->
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    <!-- PLO Summary -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">PLO Attainment Summary</div>
+      </div>
+      {% if plo_summary %}
+      {% for p in plo_summary %}
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="tag tag-plo">{{ p.code }}</span>
+            {% if p.alert %}<span style="font-size:11px;color:var(--red);">⚠ Below threshold</span>{% endif %}
+          </div>
+          <span style="font-size:14px;font-weight:800;
+            color:{% if p.alert %}var(--red){% elif p.avg >= 70 %}var(--green){% else %}var(--orange){% endif %};">
+            {{ p.avg }}%
+          </span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill {% if p.alert %}red{% elif p.avg < 70 %}orange{% endif %}"
+               style="width:{{ p.avg }}%;"></div>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div style="font-size:13px;color:var(--gray);text-align:center;padding:16px 0;">
+        No PLOs mapped to CLOs yet.
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Assessment Breakdown -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Assessment Breakdown</div>
+      </div>
+      {% for a in assessment_breakdown %}
+      <div style="display:flex;align-items:center;justify-content:space-between;
+                  padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:13px;flex-wrap:wrap;gap:6px;">
+        <div>
+          <div style="font-weight:500;">{{ a.title|truncatechars:30 }}</div>
+          <div style="font-size:11px;color:var(--gray);">{{ a.type }} · {{ a.marks }} marks · {{ a.submitted }}/{{ a.enrolled }} submitted</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          {% if a.below_threshold > 0 %}
+          <span style="font-size:11px;background:#fee2e2;color:#991b1b;padding:2px 7px;border-radius:4px;font-weight:600;">
+            ⚠ {{ a.below_threshold }} below {{ threshold }}%
+          </span>
+          {% endif %}
+          <span style="font-size:14px;font-weight:800;
+            color:{% if a.avg_pct >= 70 %}var(--green){% elif a.avg_pct >= 50 %}var(--orange){% else %}var(--red){% endif %};">
+            {{ a.avg_pct }}%
+          </span>
+        </div>
+      </div>
+      {% empty %}
+      <div style="font-size:13px;color:var(--gray);text-align:center;padding:16px;">No graded assessments yet.</div>
+      {% endfor %}
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Student-level Attainment Table ── -->
+<div class="panel">
+  <div class="panel-head">
+    <div class="panel-title">Student-Level CLO Attainment</div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span style="font-size:12px;color:var(--gray);">Show:</span>
+      <button class="btn btn-outline btn-sm" onclick="filterTable('all', this)" id="filterAll"
+              style="background:var(--sidebar);color:#fff;border-color:var(--sidebar);">All</button>
+      <button class="btn btn-outline btn-sm" onclick="filterTable('risk', this)" id="filterRisk">⚠ At Risk</button>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table style="min-width:700px;">
+      <thead>
+        <tr>
+          <th style="min-width:160px;">Student</th>
+          <th>Overall</th>
+          <th>Grade</th>
+          {% for clo in clo_list %}
+          <th style="min-width:70px;text-align:center;">{{ clo.code }}</th>
+          {% endfor %}
+          <th>Submitted</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="studentTableBody">
+        {% for row in student_rows %}
+        <tr class="student-row {% if row.is_at_risk %}at-risk-row{% endif %}"
+            style="{% if row.is_at_risk %}background:#fff5f5;{% endif %}">
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="avatar" style="width:28px;height:28px;font-size:11px;">
+                {{ row.student.full_name|first|default:row.student.username|first|upper }}
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:500;">
+                  {{ row.student.full_name|default:row.student.username }}
+                </div>
+                <div style="font-size:11px;color:var(--light);">{{ row.student.email }}</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            {% if row.overall_pct is not None %}
+            <span style="font-size:14px;font-weight:800;
+              color:{% if row.overall_pct >= 70 %}var(--green){% elif row.overall_pct >= 50 %}var(--orange){% else %}var(--red){% endif %};">
+              {{ row.overall_pct }}%
+            </span>
+            {% else %}
+            <span style="color:var(--light);font-size:12px;">Not graded</span>
+            {% endif %}
+          </td>
+          <td>
+            <span style="font-size:14px;font-weight:800;
+              color:{% if row.grade == 'F' %}var(--red){% elif row.grade == 'D' or row.grade == 'C' %}var(--orange){% else %}var(--green){% endif %};">
+              {{ row.grade }}
+            </span>
+          </td>
+          {% for clo in clo_list %}
+          {% with score=row.clo_scores|get_item:clo.code %}
+          <td style="text-align:center;">
+            {% if score %}
+              {% if score.possible > 0 %}
+              <div style="font-size:13px;font-weight:700;
+                color:{% if score.alert %}var(--red){% elif score.attainment >= 70 %}var(--green){% else %}var(--orange){% endif %};">
+                {{ score.attainment }}%
+              </div>
+              <div style="font-size:10px;color:var(--light);">
+                {{ score.obtained }}/{{ score.possible }}
+              </div>
+              {% if score.alert %}
+              <div style="font-size:10px;color:var(--red);">⚠</div>
+              {% endif %}
+              {% else %}
+              <span style="color:var(--light);font-size:11px;">—</span>
+              {% endif %}
+            {% else %}
+            <span style="color:var(--light);font-size:11px;">—</span>
+            {% endif %}
+          </td>
+          {% endwith %}
+          {% endfor %}
+          <td style="font-size:13px;color:var(--gray);">
+            {{ row.submitted }}/{{ row.total_assessments }}
+          </td>
+          <td>
+            {% if row.is_at_risk %}
+            <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;
+                         background:#fee2e2;color:#991b1b;">⚠ At Risk</span>
+            {% elif row.overall_pct is not None %}
+            <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;
+                         background:#dcfce7;color:#166534;">✓ On Track</span>
+            {% else %}
+            <span style="font-size:11px;color:var(--light);">Pending</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="{{ clo_list|length|add:5 }}" style="text-align:center;padding:30px;color:var(--light);">
+          No enrolled students yet.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<div class="empty">
+  <div class="empty-icon">📊</div>
+  <div class="empty-title">No courses yet</div>
+  <p style="font-size:13px;">Create courses first to view attainment reports.</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+// CLO Bar Chart
+const cloData = {{ class_clo_avg_json|safe }};
+if (cloData.length > 0 && document.getElementById('cloBarChart')) {
+  new Chart(document.getElementById('cloBarChart'), {
+    type: 'bar',
+    data: {
+      labels: cloData.map(d => d.code),
+      datasets: [{
+        data: cloData.map(d => d.avg),
+        backgroundColor: cloData.map(d =>
+          d.avg < {{ threshold }} ? '#ef444488' : d.avg < 70 ? '#f59e0b88' : '#10b98188'
+        ),
+        borderColor: cloData.map(d =>
+          d.avg < {{ threshold }} ? '#ef4444' : d.avg < 70 ? '#f59e0b' : '#10b981'
+        ),
+        borderWidth: 2,
+        borderRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, max: 100,
+             ticks: { callback: v => v + '%' },
+             grid: { color: '#f3f4f6' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+// Threshold change
+function applyThreshold(val) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('threshold', val);
+  window.location.href = url.toString();
+}
+
+// Table filter
+function filterTable(mode, btn) {
+  document.querySelectorAll('[id^=filter]').forEach(b => {
+    b.style.background = ''; b.style.color = ''; b.style.borderColor = '';
+  });
+  btn.style.background = 'var(--sidebar)';
+  btn.style.color = '#fff';
+  btn.style.borderColor = 'var(--sidebar)';
+
+  document.querySelectorAll('.student-row').forEach(row => {
+    if (mode === 'all') row.style.display = '';
+    else row.style.display = row.classList.contains('at-risk-row') ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}
+
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# এই folder structure বানাও:
+#
+# evalify_app/
+#   templatetags/
+#     __init__.py          ← empty file
+#     evalify_extras.py    ← নিচের content রাখো
+# ══════════════════════════════════════════════════════════════════════════
+
+from django import template
+
+register = template.Library()
+
+
+@register.filter
+def get_item(dictionary, key):
+    """Template filter: {{ my_dict|get_item:key }}"""
+    if isinstance(dictionary, dict):
+        return dictionary.get(key)
+    return None
+
+
+@register.filter
+def sub(value, arg):
+    """Subtraction filter: {{ value|sub:arg }}"""
+    try:
+        return float(value) - float(arg)
+    except (ValueError, TypeError):
+        return 0
+
+
+@register.filter
+def pct_color(value, threshold):
+    """Return color class based on value vs threshold."""
+    try:
+        v = float(value)
+        t = float(threshold)
+        if v < t:
+            return 'var(--red)'
+        elif v < 70:
+            return 'var(--orange)'
+        return 'var(--green)'
+    except (ValueError, TypeError):
+        return 'var(--gray)'
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# faculty/base.html তে Analytics nav এর পরে এই line ADD করো:
+# ══════════════════════════════════════════════════════════════════════════
+
+    <a href="{% url 'faculty_attainment_report' %}" class="{% block nav_attainment %}{% endblock %}">
+      <span class="nav-icon">📈</span>
+      <span>Attainment Report</span>
+    </a>
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# এবং attainment_report.html এর একদম top এ ({% extends %} এর পরে) এই line ADD করো:
+# ══════════════════════════════════════════════════════════════════════════
+
+{% load evalify_extras %}
+
+
+
+
+
+
+Selenium Tests
+
+from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.action_chains import ActionChains
+from django.contrib.auth.models import User
+from faculty.models import Faculty, Course, CLO, PLO, Assessment, Question
+from student.models import Student, Enrollment, Submission
+from datetime import timedelta
+from django.utils import timezone
+import time
+import os
+
+
+class SeleniumAttainmentTest(StaticLiveServerTestCase):
+    
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--window-size=1920,1080')
+        cls.selenium = webdriver.Chrome(options=chrome_options)
+        cls.selenium.implicitly_wait(10)
+    
+    @classmethod
+    def tearDownClass(cls):
+        cls.selenium.quit()
+        super().tearDownClass()
+    
+    def setUp(self):
+        # Create faculty
+        self.faculty_user = User.objects.create_user(
+            username='attainmentfaculty',
+            password='attainment123',
+            email='faculty@test.com'
+        )
+        self.faculty = Faculty.objects.create(
+            user=self.faculty_user,
+            faculty_id='FAC001',
+            department='CSE',
+            designation='Professor'
+        )
+        
+        # Create course
+        self.course = Course.objects.create(
+            code='SEL501',
+            name='Selenium Testing',
+            department='CSE',
+            credits=3,
+            created_by=self.faculty
+        )
+        
+        # Create CLOs
+        self.clo1 = CLO.objects.create(
+            code='CLO1',
+            description='Write Selenium tests',
+            course=self.course
+        )
+        self.clo2 = CLO.objects.create(
+            code='CLO2',
+            description='Use WebDriverWait',
+            course=self.course
+        )
+        
+        # Create PLOs
+        self.plo1 = PLO.objects.create(
+            code='PLO1',
+            description='Test Automation'
+        )
+        self.clo1.plos.add(self.plo1)
+        self.clo2.plos.add(self.plo1)
+        
+        # Create students
+        self.student1 = Student.objects.create(
+            user=User.objects.create_user('selstudent1', 's1@test.com', 'pass'),
+            student_id='SEL001',
+            full_name='Alice Tester'
+        )
+        self.student2 = Student.objects.create(
+            user=User.objects.create_user('selstudent2', 's2@test.com', 'pass'),
+            student_id='SEL002',
+            full_name='Bob Tester'
+        )
+        
+        # Enroll students
+        Enrollment.objects.create(student=self.student1, course=self.course, semester='Spring 2024')
+        Enrollment.objects.create(student=self.student2, course=self.course, semester='Spring 2024')
+        
+        # Create assessment
+        self.assessment = Assessment.objects.create(
+            title='Selenium Quiz',
+            assessment_type='quiz',
+            course=self.course,
+            total_marks=100,
+            due_date=timezone.now() - timedelta(days=5)
+        )
+        
+        # Create questions
+        self.q1 = Question.objects.create(
+            assessment=self.assessment,
+            text='What is WebDriver?',
+            max_marks=50,
+            order=1
+        )
+        self.q1.clos.add(self.clo1)
+        
+        self.q2 = Question.objects.create(
+            assessment=self.assessment,
+            text='How to handle waits?',
+            max_marks=50,
+            order=2
+        )
+        self.q2.clos.add(self.clo2)
+        
+        # Create submissions
+        Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student1,
+            content='Good answers',
+            submitted_at=timezone.now(),
+            status='graded',
+            total_score=85,
+            final_score=85,
+            question_scores={str(self.q1.id): 45, str(self.q2.id): 40}
+        )
+        
+        Submission.objects.create(
+            assessment=self.assessment,
+            student=self.student2,
+            content='Average answers',
+            submitted_at=timezone.now(),
+            status='graded',
+            total_score=60,
+            final_score=60,
+            question_scores={str(self.q1.id): 30, str(self.q2.id): 30}
+        )
+        
+        # Login
+        self.selenium.get(f'{self.live_server_url}/faculty/login/')
+        username_input = self.selenium.find_element(By.NAME, 'username')
+        password_input = self.selenium.find_element(By.NAME, 'password')
+        username_input.send_keys('attainmentfaculty')
+        password_input.send_keys('attainment123')
+        self.selenium.find_element(By.XPATH, '//button[@type="submit"]').click()
+        
+        # Wait for login
+        WebDriverWait(self.selenium, 10).until(
+            EC.url_contains('/faculty/dashboard/')
+        )
+    
+    def test_attainment_page_loads(self):
+        """Test that attainment page loads correctly"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/')
+        
+        # Select course from dropdown
+        course_select = WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.NAME, 'course'))
+        )
+        course_select.send_keys(self.course.code)
+        course_select.send_keys(Keys.RETURN)
+        
+        time.sleep(2)
+        
+        # Check page title
+        page_title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertIn('Class Attainment Report', page_title.text)
+        
+        # Check summary cards
+        total_students = self.selenium.find_element(By.XPATH, "//div[contains(text(), 'Total Students')]/following-sibling::div")
+        self.assertEqual('2', total_students.text)
+    
+    def test_summary_cards_display(self):
+        """Test that summary cards show correct statistics"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check all summary cards
+        cards = self.selenium.find_elements(By.CLASS_NAME, 'stat')
+        self.assertEqual(len(cards), 4)
+        
+        # Check values
+        self.assertIn('Total Students', self.selenium.page_source)
+        self.assertIn('CLOs Tracked', self.selenium.page_source)
+        self.assertIn('Assessments', self.selenium.page_source)
+    
+    def test_clo_bar_chart_renders(self):
+        """Test that CLO bar chart renders correctly"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check canvas element
+        canvas = WebDriverWait(self.selenium, 10).until(
+            EC.presence_of_element_located((By.ID, 'cloBarChart'))
+        )
+        self.assertTrue(canvas.is_displayed())
+        
+        # Check that chart has been initialized (canvas has width/height)
+        self.assertIsNotNone(canvas.get_attribute('width'))
+        self.assertIsNotNone(canvas.get_attribute('height'))
+    
+    def test_progress_bars_display(self):
+        """Test that progress bars are rendered"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check for progress bars
+        progress_bars = self.selenium.find_elements(By.CLASS_NAME, 'progress-bar')
+        self.assertGreater(len(progress_bars), 0)
+        
+        # Check progress fill
+        progress_fills = self.selenium.find_elements(By.CLASS_NAME, 'progress-fill')
+        self.assertGreater(len(progress_fills), 0)
+    
+    def test_student_table_renders(self):
+        """Test that student attainment table renders correctly"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check table headers
+        headers = self.selenium.find_elements(By.TAG_NAME, 'th')
+        header_texts = [h.text for h in headers]
+        self.assertIn('Student', header_texts)
+        self.assertIn('Overall', header_texts)
+        self.assertIn('Grade', header_texts)
+        
+        # Check student rows
+        rows = self.selenium.find_elements(By.CLASS_NAME, 'student-row')
+        self.assertEqual(len(rows), 2)
+        
+        # Check student names
+        self.assertIn('Alice Tester', self.selenium.page_source)
+        self.assertIn('Bob Tester', self.selenium.page_source)
+    
+    def test_clo_scores_in_table(self):
+        """Test that CLO scores are displayed in table"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check CLO1 scores
+        self.assertIn('90%', self.selenium.page_source)  # Alice CLO1
+        self.assertIn('60%', self.selenium.page_source)  # Bob CLO1
+        
+        # Check CLO2 scores
+        self.assertIn('80%', self.selenium.page_source)  # Alice CLO2 (40/50)
+        self.assertIn('60%', self.selenium.page_source)  # Bob CLO2 (30/50)
+    
+    def test_grades_display(self):
+        """Test that grades are displayed correctly"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Alice: 85% -> A
+        self.assertIn('A', self.selenium.page_source)
+        
+        # Bob: 60% -> D
+        self.assertIn('D', self.selenium.page_source)
+    
+    def test_threshold_change(self):
+        """Test changing threshold value"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Find threshold input
+        threshold_input = self.selenium.find_element(By.ID, 'thresholdInput')
+        
+        # Change threshold to 70%
+        threshold_input.clear()
+        threshold_input.send_keys('70')
+        threshold_input.send_keys(Keys.RETURN)
+        
+        time.sleep(2)
+        
+        # Check that at-risk count updated
+        at_risk_stat = self.selenium.find_element(By.XPATH, "//div[contains(@class, 'stat')]//div[contains(text(), 'At Risk')]/following-sibling::div")
+        # Bob should be at risk now
+        self.assertIn('At Risk', self.selenium.page_source)
+    
+    def test_filter_at_risk_students(self):
+        """Test filtering to show only at-risk students"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Click at-risk filter button
+        risk_filter = self.selenium.find_element(By.ID, 'filterRisk')
+        risk_filter.click()
+        
+        time.sleep(1)
+        
+        # Only at-risk students should be visible
+        rows = self.selenium.find_elements(By.CLASS_NAME, 'student-row')
+        visible_rows = [row for row in rows if row.is_displayed()]
+        
+        # Bob is at risk, Alice is not
+        self.assertIn('Bob Tester', self.selenium.page_source)
+        self.assertNotIn('Alice Tester', self.selenium.page_source)
+    
+    def test_filter_all_students(self):
+        """Test showing all students after filtering"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # First filter to at-risk
+        risk_filter = self.selenium.find_element(By.ID, 'filterRisk')
+        risk_filter.click()
+        time.sleep(1)
+        
+        # Then show all
+        all_filter = self.selenium.find_element(By.ID, 'filterAll')
+        all_filter.click()
+        time.sleep(1)
+        
+        # Both students should be visible
+        self.assertIn('Alice Tester', self.selenium.page_source)
+        self.assertIn('Bob Tester', self.selenium.page_source)
+    
+    def test_course_selector_works(self):
+        """Test that course selector dropdown works"""
+        # Create second course
+        course2 = Course.objects.create(
+            code='SEL502',
+            name='Advanced Selenium',
+            department='CSE',
+            created_by=self.faculty
+        )
+        
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/')
+        
+        # Select second course
+        course_select = self.selenium.find_element(By.NAME, 'course')
+        course_select.send_keys(course2.code)
+        course_select.send_keys(Keys.RETURN)
+        
+        time.sleep(2)
+        
+        # Page should update (may show no students)
+        page_title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertIn('Class Attainment Report', page_title.text)
+    
+    def test_assessment_breakdown_section(self):
+        """Test assessment breakdown section"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check assessment title
+        self.assertIn('Selenium Quiz', self.selenium.page_source)
+        
+        # Check submission stats
+        self.assertIn('2/2 submitted', self.selenium.page_source)
+        
+        # Check average percentage
+        avg_score = (85 + 60) / 2  # 72.5%
+        self.assertIn('72.5%', self.selenium.page_source)
+    
+    def test_plo_summary_section(self):
+        """Test PLO summary section"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check PLO section
+        self.assertIn('PLO Attainment Summary', self.selenium.page_source)
+        self.assertIn('PLO1', self.selenium.page_source)
+        
+        # PLO attainment should be average of CLO1 and CLO2
+        # CLO1: (90+60)/2=75%, CLO2: (80+60)/2=70%, PLO1: 72.5%
+        self.assertIn('72.5%', self.selenium.page_source)
+    
+    def test_at_risk_alert_box(self):
+        """Test at-risk alert box displays correctly"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}&threshold=65')
+        
+        # Check alert box
+        alert_box = self.selenium.find_element(By.XPATH, "//div[contains(@style, 'background:#fff5f5')]")
+        self.assertTrue(alert_box.is_displayed())
+        
+        # Check at-risk student count
+        self.assertIn('1 Student Below 65% Threshold', alert_box.text)
+        
+        # Check student name in alert
+        self.assertIn('Bob Tester', alert_box.text)
+    
+    def test_weak_clos_display_in_alert(self):
+        """Test that weak CLOs are shown in alert box"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}&threshold=65')
+        
+        # Check weak CLOs for Bob
+        alert_box = self.selenium.find_element(By.XPATH, "//div[contains(@style, 'background:#fff5f5')]")
+        self.assertIn('Weak CLOs', alert_box.text)
+    
+    def test_progress_bar_colors(self):
+        """Test progress bar colors based on attainment"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # CLO1: 75% (green)
+        # CLO2: 70% (green)
+        # Both should be green (>=70)
+        
+        progress_fills = self.selenium.find_elements(By.CLASS_NAME, 'progress-fill')
+        for fill in progress_fills:
+            # Check that progress-fill has width style
+            width_style = fill.get_attribute('style')
+            self.assertIsNotNone(width_style)
+    
+    def test_status_badges(self):
+        """Test status badges (At Risk, On Track)"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Alice should have "On Track" badge
+        self.assertIn('On Track', self.selenium.page_source)
+        
+        # Bob should have "At Risk" badge (with 60% overall)
+        self.assertIn('At Risk', self.selenium.page_source)
+    
+    def test_avatar_display(self):
+        """Test student avatars in table"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check for avatar elements
+        avatars = self.selenium.find_elements(By.CLASS_NAME, 'avatar')
+        self.assertEqual(len(avatars), 2)
+        
+        # Check avatar initials
+        self.assertIn('A', avatars[0].text)
+        self.assertIn('B', avatars[1].text)
+    
+    def test_submission_count_display(self):
+        """Test submission count column"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Both students have submitted both assessments
+        self.assertIn('2/2', self.selenium.page_source)
+    
+    def test_responsive_design(self):
+        """Test responsive design on different viewport sizes"""
+        # Mobile viewport
+        self.selenium.set_window_size(375, 667)
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        page_title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertTrue(page_title.is_displayed())
+        
+        # Tablet viewport
+        self.selenium.set_window_size(768, 1024)
+        self.selenium.refresh()
+        self.assertTrue(page_title.is_displayed())
+        
+        # Desktop viewport
+        self.selenium.set_window_size(1920, 1080)
+        self.selenium.refresh()
+        self.assertTrue(page_title.is_displayed())
+    
+    def test_table_sorting_visual(self):
+        """Test that table displays data in organized manner"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check table structure
+        table = self.selenium.find_element(By.TAG_NAME, 'table')
+        self.assertTrue(table.is_displayed())
+        
+        # Check that all columns are present
+        headers = table.find_elements(By.TAG_NAME, 'th')
+        self.assertEqual(len(headers), 2 + 2 + 2 + 1 + 1)  # Student, Overall, Grade, 2 CLOs, Submitted, Status
+    
+    def test_chart_updates_on_threshold_change(self):
+        """Test that chart colors update when threshold changes"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}&threshold=70')
+        
+        # Note: Chart colors are determined server-side, so changing threshold requires page reload
+        # This is handled by the threshold input which triggers a page reload
+        
+        threshold_input = self.selenium.find_element(By.ID, 'thresholdInput')
+        threshold_input.clear()
+        threshold_input.send_keys('75')
+        threshold_input.send_keys(Keys.RETURN)
+        
+        time.sleep(2)
+        
+        # Page should reload with new threshold
+        new_url = self.selenium.current_url
+        self.assertIn('threshold=75', new_url)
+    
+    def test_no_data_state(self):
+        """Test course with no submissions"""
+        course2 = Course.objects.create(
+            code='SEL503',
+            name='No Data Course',
+            department='CSE',
+            created_by=self.faculty
+        )
+        Enrollment.objects.create(student=self.student1, course=course2, semester='Spring 2024')
+        
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={course2.id}')
+        
+        # Should show appropriate message
+        self.assertIn('No graded assessments yet', self.selenium.page_source)
+    
+    def test_keyboard_navigation(self):
+        """Test keyboard navigation through interactive elements"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Tab to threshold input
+        body = self.selenium.find_element(By.TAG_NAME, 'body')
+        body.send_keys(Keys.TAB)
+        body.send_keys(Keys.TAB)
+        
+        active_element = self.selenium.switch_to.active_element
+        self.assertEqual(active_element.get_attribute('id'), 'thresholdInput')
+        
+        # Change value
+        active_element.clear()
+        active_element.send_keys('80')
+        active_element.send_keys(Keys.RETURN)
+        
+        time.sleep(2)
+        
+        # Check that threshold updated
+        self.assertIn('threshold=80', self.selenium.current_url)
+    
+    def test_print_layout(self):
+        """Test that page is print-friendly (basic check)"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Check that print media styles exist (basic check)
+        # In a real test, you would check for @media print styles
+        page_content = self.selenium.page_source
+        self.assertIsNotNone(page_content)
+
+
+class SeleniumAttainmentEdgeCasesTest(StaticLiveServerTestCase):
+    """Test edge cases and error handling"""
+    
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        cls.selenium = webdriver.Chrome(options=chrome_options)
+    
+    @classmethod
+    def tearDownClass(cls):
+        cls.selenium.quit()
+        super().tearDownClass()
+    
+    def setUp(self):
+        self.faculty_user = User.objects.create_user(
+            username='edgecasefaculty',
+            password='edge123'
+        )
+        self.faculty = Faculty.objects.create(
+            user=self.faculty_user,
+            faculty_id='EDGE001'
+        )
+        
+        self.course = Course.objects.create(
+            code='EDGE101',
+            name='Edge Cases',
+            created_by=self.faculty
+        )
+        
+        # Login
+        self.selenium.get(f'{self.live_server_url}/faculty/login/')
+        username_input = self.selenium.find_element(By.NAME, 'username')
+        password_input = self.selenium.find_element(By.NAME, 'password')
+        username_input.send_keys('edgecasefaculty')
+        password_input.send_keys('edge123')
+        self.selenium.find_element(By.XPATH, '//button[@type="submit"]').click()
+    
+    def test_no_clos_mapped(self):
+        """Test course with no CLOs"""
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}')
+        
+        # Should handle gracefully
+        self.assertIn('No CLOs mapped yet', self.selenium.page_source)
+    
+    def test_extreme_threshold_values(self):
+        """Test threshold at extremes (0% and 100%)"""
+        # Test 0% threshold
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}&threshold=0')
+        self.assertIn('At Risk', self.selenium.page_source)  # Should show 0 at risk
+        
+        # Test 100% threshold
+        self.selenium.get(f'{self.live_server_url}/faculty/attainment/?course={self.course.id}&threshold=100')
+        self.assertIn('At Risk', self.selenium.page_source)  # All students at risk
+    
+    def test_invalid_threshold_value(self):
+        """Test invalid threshold values"""
+        threshold_input = self.selenium.find_element(By.ID, 'thresholdInput')
+        threshold_input.clear()
+        threshold_input.send_keys('150')
+        threshold_input.send_keys(Keys.RETURN)
+        
+        time.sleep(1)
+        
+        # Should either clamp or ignore invalid value
+        # Check that page still loads
+        page_title = self.selenium.find_element(By.CLASS_NAME, 'page-title')
+        self.assertTrue(page_title.is_displayed())

@@ -136,50 +136,41 @@ class StudyMaterial(models.Model):
         ('assignment',   'Assignment Sheet'),
         ('other',        'Other'),
     ]
- 
-    course       = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='materials')
-    title        = models.CharField(max_length=200)
-    description  = models.TextField(blank=True)
+
+    course        = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='materials')
+    title         = models.CharField(max_length=200)
+    description   = models.TextField(blank=True)
     material_type = models.CharField(max_length=20, choices=MATERIAL_TYPE_CHOICES, default='lecture_note')
- 
-    # File upload (for notes, PDFs, slides etc.)
-    file         = models.FileField(upload_to='materials/', blank=True, null=True)
- 
-    # Video URL (YouTube / Google Drive / any link)
-    video_url    = models.URLField(blank=True)
- 
-    uploaded_by  = models.ForeignKey(User, on_delete=models.CASCADE)
-    uploaded_at  = models.DateTimeField(auto_now_add=True)
- 
-    # Visibility — faculty can hide a material temporarily
-    is_visible   = models.BooleanField(default=True)
- 
+    file          = models.FileField(upload_to='materials/', blank=True, null=True)
+    video_url     = models.URLField(blank=True)
+    uploaded_by   = models.ForeignKey(User, on_delete=models.CASCADE)
+    uploaded_at   = models.DateTimeField(auto_now_add=True)
+    is_visible    = models.BooleanField(default=True)
+
     def __str__(self):
         return f"{self.title} ({self.course.code})"
- 
+
     def filename(self):
         if self.file:
             return self.file.name.split('/')[-1]
         return ''
- 
+
     def is_video(self):
         return self.material_type == 'video' or bool(self.video_url)
- 
+
     def embed_url(self):
         """Convert YouTube watch URL → embed URL for iframe."""
         import re
         url = self.video_url
         if not url:
             return ''
-        # youtu.be/ID
         m = re.match(r'https?://youtu\.be/([^?&]+)', url)
         if m:
             return f"https://www.youtube.com/embed/{m.group(1)}"
-        # youtube.com/watch?v=ID
         m = re.search(r'[?&]v=([^&]+)', url)
         if m:
             return f"https://www.youtube.com/embed/{m.group(1)}"
-        # Already an embed URL or other platform — return as-is
+        return url  
 
 
 class Announcement(models.Model):
@@ -197,3 +188,54 @@ class Announcement(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Notification(models.Model):
+    NOTIF_TYPE_CHOICES = [
+        ('grade_released',    'Grade Released'),
+        ('deadline_tomorrow', 'Deadline Tomorrow'),
+        ('deadline_today',    'Due Today'),
+        ('new_assignment',    'New Assignment'),
+        ('new_material',      'New Material'),
+        ('announcement',      'Announcement'),
+    ]
+
+    recipient  = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    notif_type = models.CharField(max_length=30, choices=NOTIF_TYPE_CHOICES)
+    title      = models.CharField(max_length=200)
+    message    = models.TextField()
+    is_read    = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    course     = models.ForeignKey(Course,     on_delete=models.CASCADE, null=True, blank=True)
+    assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, null=True, blank=True)
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.notif_type} → {self.recipient.username}"
+
+    @classmethod
+    def send(cls, recipient, notif_type, title, message,
+             course=None, assessment=None, submission=None):
+        from django.utils import timezone
+        from datetime import timedelta
+        one_min_ago = timezone.now() - timedelta(minutes=1)
+        already = cls.objects.filter(
+            recipient=recipient,
+            notif_type=notif_type,
+            title=title,
+            created_at__gte=one_min_ago,
+        ).exists()
+        if not already:
+            cls.objects.create(
+                recipient=recipient,
+                notif_type=notif_type,
+                title=title,
+                message=message,
+                course=course,
+                assessment=assessment,
+                submission=submission,
+            )
