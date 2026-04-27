@@ -1,0 +1,71 @@
+{% extends 'student/base.html' %}
+{% block nav_submissions %}active{% endblock %}
+
+{% block content %}
+<div class="page-title">Submissions</div>
+<div class="page-sub">Your submitted assessments and pending work.</div>
+
+{% if submissions %}
+<div style="margin-bottom:24px;">
+  <div class="section-title" style="font-weight:600;margin-bottom:10px;">Submitted</div>
+  {% for sub in submissions %}
+  <div class="list-item">
+    <div class="list-body">
+      <div class="list-title">{{ sub.assessment.title }}</div>
+      <div class="list-meta">
+        {{ sub.assessment.course.code }} &nbsp;·&nbsp;
+        Submitted: {{ sub.submitted_at|date:"M d, Y" }}
+        {% if sub.is_late %}<span style="color:#dc2626;">&nbsp;·&nbsp; Late</span>{% endif %}
+        &nbsp;·&nbsp; Status: {{ sub.get_status_display }}
+      </div>
+      {% if sub.status == 'graded' %}
+      <div style="font-size:13px;margin-top:4px;">
+        Score: {{ sub.final_score }} / {{ sub.assessment.total_marks }}
+        {% if sub.late_deduction > 0 %}
+        <span style="color:#dc2626;">&nbsp;(−{{ sub.late_deduction }} late penalty)</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if todo_assessments %}
+<div style="margin-bottom:24px;">
+  <div class="section-title" style="font-weight:600;margin-bottom:10px;">Pending</div>
+  {% for a in todo_assessments %}
+  <div class="list-item">
+    <div class="list-body">
+      <div class="list-title">{{ a.title }}</div>
+      <div class="list-meta">
+        {{ a.course.code }}
+        {% if a.due_date %}&nbsp;·&nbsp; Due: {{ a.due_date }}{% endif %}
+        &nbsp;·&nbsp; {{ a.total_marks }} marks
+      </div>
+      <a href="{% url 'submit_assessment' a.id %}" class="btn btn-sm btn-primary" style="margin-top:6px;">Submit</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if missing_assessments %}
+<div>
+  <div class="section-title" style="font-weight:600;margin-bottom:10px;color:#dc2626;">Overdue (Not Submitted)</div>
+  {% for a in missing_assessments %}
+  <div class="list-item" style="border-left:3px solid #dc2626;">
+    <div class="list-body">
+      <div class="list-title">{{ a.title }}</div>
+      <div class="list-meta">{{ a.course.code }} &nbsp;·&nbsp; Was due: {{ a.due_date }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not submissions and not pending_assessments %}
+<div style="text-align:center;padding:48px;color:var(--gray);">No assessments yet.</div>
+{% endif %}
+{% endblock %}

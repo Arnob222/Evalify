@@ -170,6 +170,23 @@
               {{ course.enrollment_code }}
             </span>
             <button class="btn btn-outline btn-sm" onclick="openAddStudent({{ course.id }})">+ Add Manually</button>
+      <!--Students-->
+      <div class="tab-content" data-tab-content="students_{{ course.id }}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <strong style="font-size:14px;">Enrolled Students ({{ course.enrollments.count }})</strong>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-outline btn-sm" onclick="openAddStudent({{ course.id }})">+ Add Student</button>
+            <button class="btn btn-outline btn-sm" onclick="openRangeModal({{ course.id }})" style="color:var(--teal);border-color:var(--teal);">+ Add by ID Range</button>
+          </div>
+        </div>
+        {% for enroll in course.enrollments.all %}
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:#20b2aa;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">
+            {{ enroll.student.full_name|first|default:enroll.student.username|first|upper }}
+          </div>
+          <div>
+            <div style="font-size:14px;font-weight:500;">{{ enroll.student.full_name|default:enroll.student.username }}</div>
+            <div style="font-size:12px;color:#9ca3af;">{{ enroll.student.email }}</div>
           </div>
         </div>
         {% if course.enrollments.count > 0 %}
@@ -398,6 +415,47 @@
   </div>
 </div>
 
+
+<!-- Add Students by Range Modal -->
+<div class="modal-overlay" id="addRangeModal">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-head">
+      <div class="modal-title">Add Students by Registration ID Range</div>
+      <button class="modal-close" onclick="closeRangeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="rangeCourseId">
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;font-size:12px;color:#0369a1;margin-bottom:16px;">
+        Enrols all registered students whose email matches <strong>{ID}@uap-bd.edu</strong> within the given range.
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">From Registration ID *</label>
+          <input type="number" id="rangeFromId" class="form-control" placeholder="e.g. 20220101" min="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">To Registration ID *</label>
+          <input type="number" id="rangeToId" class="form-control" placeholder="e.g. 20220160" min="1">
+        </div>
+      </div>
+      <div id="rangeError" style="color:#ef4444;font-size:13px;display:none;margin-top:4px;"></div>
+
+      <!-- Result box (hidden until response) -->
+      <div id="rangeResult" style="display:none;margin-top:14px;border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.8;">
+        <div id="rangeResultAdded"   style="color:#166534;font-weight:600;"></div>
+        <div id="rangeResultAlready" style="color:#92400e;"></div>
+        <div id="rangeResultMissing" style="color:#991b1b;"></div>
+        <div id="rangeResultIds"     style="margin-top:6px;font-size:12px;color:#6b7280;word-break:break-all;"></div>
+      </div>
+    </div>
+    <div class="modal-foot" style="display:flex;gap:8px;">
+      <button class="btn btn-primary btn-full" id="rangeSubmitBtn" onclick="submitAddRange()">Enrol Students</button>
+      <button class="btn btn-outline" onclick="closeRangeModal()" style="white-space:nowrap;">Close</button>
+    </div>
+  </div>
+</div>
+
+
 {% endblock %}
 
 {% block scripts %}
@@ -587,6 +645,85 @@ async function removeStudent(courseId, studentId, btn, rowId) {
   } else {
     alert(res.error || 'Error removing student');
   }
+}
+// ── Add by Registration ID Range ──────────────────────────────
+function openRangeModal(courseId) {
+  document.getElementById('rangeCourseId').value = courseId;
+  document.getElementById('rangeFromId').value = '';
+  document.getElementById('rangeToId').value = '';
+  document.getElementById('rangeError').style.display = 'none';
+  document.getElementById('rangeResult').style.display = 'none';
+  document.getElementById('rangeSubmitBtn').disabled = false;
+  document.getElementById('rangeSubmitBtn').textContent = 'Enrol Students';
+  openModal('addRangeModal');
+}
+
+function closeRangeModal() {
+  closeModal('addRangeModal');
+  if (document.getElementById('rangeResultAdded').textContent) {
+    location.reload();
+  }
+}
+
+async function submitAddRange() {
+  const courseId = document.getElementById('rangeCourseId').value;
+  const fromId   = document.getElementById('rangeFromId').value.trim();
+  const toId     = document.getElementById('rangeToId').value.trim();
+  const errEl    = document.getElementById('rangeError');
+  const resultEl = document.getElementById('rangeResult');
+  const btn      = document.getElementById('rangeSubmitBtn');
+
+  errEl.style.display = 'none';
+  resultEl.style.display = 'none';
+
+  if (!fromId || !toId) {
+    errEl.textContent = 'Both From and To IDs are required.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (parseInt(fromId) > parseInt(toId)) {
+    errEl.textContent = 'From ID must be less than or equal to To ID.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  const res = await apiPost(`/faculty/courses/${courseId}/add-students-range/`, {
+    from_id: parseInt(fromId),
+    to_id:   parseInt(toId),
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'Enrol Students';
+
+  if (!res.success) {
+    errEl.textContent = res.error || 'Something went wrong.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // Show result summary
+  resultEl.style.background = res.added > 0 ? '#f0fdf4' : '#fafafa';
+  resultEl.style.border = `1px solid ${res.added > 0 ? '#86efac' : '#e5e7eb'}`;
+
+  document.getElementById('rangeResultAdded').textContent =
+    `✓ ${res.added} student${res.added !== 1 ? 's' : ''} newly enrolled`;
+
+  document.getElementById('rangeResultAlready').textContent = res.already_enrolled > 0
+    ? `↺ ${res.already_enrolled} already enrolled (skipped)`
+    : '';
+
+  document.getElementById('rangeResultMissing').textContent = res.not_found > 0
+    ? `✗ ${res.not_found} ID${res.not_found !== 1 ? 's' : ''} not found (no account)`
+    : '';
+
+  document.getElementById('rangeResultIds').textContent = res.not_found_ids && res.not_found_ids.length
+    ? `Not found IDs: ${res.not_found_ids.join(', ')}${res.not_found > res.not_found_ids.length ? ' …' : ''}`
+    : '';
+
+  resultEl.style.display = 'block';
 }
 </script>
 {% endblock %}

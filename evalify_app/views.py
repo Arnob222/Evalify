@@ -8,8 +8,10 @@ from collections import defaultdict
 import json
 import base64
 import uuid
+from datetime import date
 from .models import (User, Course, CLO, PLO, Assessment, Question, SubQuestion, SubQuestionGrade,
-                     Enrollment, Submission, QuestionGrade, Announcement, StudyMaterial, Notification)
+                     Enrollment, Submission, QuestionGrade, Announcement, StudyMaterial, Notification,
+                     CLOActionPlan, PLOActionPlan)
 from .notifications import (notify_grade_released, notify_new_assignment, notify_new_material, notify_announcement)
 from .grace_period import check_submission_window, apply_late_deduction, recalculate_final_score
 
@@ -155,6 +157,31 @@ def faculty_dashboard(request):
 
 
 @faculty_required
+def faculty_enrolled_students(request):
+    courses = Course.objects.filter(faculty=request.user).prefetch_related(
+        'enrollments', 'enrollments__student'
+    ).order_by('code')
+    search = request.GET.get('q', '').strip()
+    course_filter = request.GET.get('course', '')
+    all_enrollments = []
+    for course in courses:
+        for enroll in course.enrollments.all():
+            student = enroll.student
+            if search and search.lower() not in (student.full_name or '').lower() and search.lower() not in student.username.lower():
+                continue
+            if course_filter and str(course.id) != course_filter:
+                continue
+            all_enrollments.append({'enrollment': enroll, 'student': student, 'course': course})
+    return render(request, 'faculty/enrolled_students.html', {
+        'courses': courses,
+        'all_enrollments': all_enrollments,
+        'search': search,
+        'course_filter': course_filter,
+        'total_count': len(all_enrollments),
+    })
+
+
+@faculty_required
 def faculty_courses(request):
     courses = Course.objects.filter(faculty=request.user).prefetch_related(
         'clos', 'clos__plos', 'enrollments', 'enrollments__student'
@@ -247,6 +274,38 @@ def remove_student_from_course(request, course_id, student_id):
         Enrollment.objects.filter(student_id=student_id, course=course).delete()
         return JsonResponse({'success': True})
     return JsonResponse({'error': 'POST required'}, status=400)
+def add_students_by_range(request, course_id):
+    course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=400)
+    data = json.loads(request.body)
+    try:
+        from_id = int(str(data.get('from_id', '')).strip())
+        to_id   = int(str(data.get('to_id',   '')).strip())
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Registration IDs must be numbers.'}, status=400)
+    if from_id > to_id:
+        return JsonResponse({'error': 'From ID must be less than or equal to To ID.'}, status=400)
+    if to_id - from_id >= 500:
+        return JsonResponse({'error': 'Range too large — maximum 500 students at once.'}, status=400)
+
+    added, already_enrolled, not_found = [], [], []
+    for reg_id in range(from_id, to_id + 1):
+        email = f'{reg_id}@uap-bd.edu'
+        try:
+            student = User.objects.get(email=email, role='student')
+            _, created = Enrollment.objects.get_or_create(student=student, course=course)
+            (added if created else already_enrolled).append(reg_id)
+        except User.DoesNotExist:
+            not_found.append(reg_id)
+
+    return JsonResponse({
+        'success': True,
+        'added': len(added),
+        'already_enrolled': len(already_enrolled),
+        'not_found': len(not_found),
+        'not_found_ids': not_found[:30],
+    })
 
 
 @faculty_required
@@ -650,6 +709,155 @@ def faculty_analytics(request):
 
 
 @faculty_required
+def faculty_escar(request):
+    courses = Course.objects.filter(faculty=request.user)
+    selected_course = None
+    clos_data = []
+    plos_data = []
+    rows = []
+    total_enrolled = 0
+    total_participated = 0
+    total_absent = 0
+
+    course_id = request.GET.get('course')
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    elif courses.exists():
+        selected_course = courses.first()
+
+    if selected_course:
+        assessments = Assessment.objects.filter(course=selected_course, status='published')
+        enrolled_students = list(Enrollment.objects.filter(course=selected_course).select_related('student'))
+        total_enrolled = len(enrolled_students)
+
+        # Read all grades the same way the marksheet does — no submission-status filter.
+        all_q_ids = list(Question.objects.filter(assessment__in=assessments).values_list('id', flat=True))
+        all_grades = QuestionGrade.objects.filter(
+            question_id__in=all_q_ids,
+            submission__assessment__course=selected_course,
+        ).values('submission__student_id', 'question_id', 'marks_obtained')
+
+        # grade_map mirrors the marksheet: {student_id: {question_id: marks}}
+        grade_map = {}
+        for g in all_grades:
+            sid = g['submission__student_id']
+            grade_map.setdefault(sid, {})[g['question_id']] = g['marks_obtained']
+
+        participated_ids = set(grade_map.keys())
+        total_participated = len(participated_ids)
+        total_absent = total_enrolled - total_participated
+
+        # Build question max-marks cache once for all questions in the course
+        q_maxmarks = {q.id: q.max_marks for q in Question.objects.filter(id__in=all_q_ids)}
+
+        def _attainment(q_ids, q_marks_map):
+            """Return (students_passed, students_assessed, attainment_pct) for a set of question IDs."""
+            s_passed = 0
+            s_assessed = 0
+            for enrollment in enrolled_students:
+                sid = enrollment.student_id
+                if sid not in participated_ids:
+                    continue
+                sg = grade_map.get(sid, {})
+                # Only questions this student actually has a grade for
+                student_q_grades = {qid: sg[qid] for qid in q_ids if qid in sg}
+                if not student_q_grades:
+                    continue
+                student_max = sum(q_marks_map.get(qid, 0) for qid in student_q_grades)
+                if student_max == 0:
+                    continue
+                obtained = sum(student_q_grades.values())
+                s_assessed += 1
+                if (obtained / student_max * 100) >= 40:
+                    s_passed += 1
+            pct = round((s_passed / s_assessed * 100) if s_assessed > 0 else 0, 2)
+            return s_passed, s_assessed, pct
+
+        for clo in selected_course.clos.all():
+            q_ids = list(Question.objects.filter(assessment__in=assessments, clos=clo).values_list('id', flat=True))
+            q_marks_map = {qid: q_maxmarks[qid] for qid in q_ids if qid in q_maxmarks}
+            s_passed, s_assessed, attainment_pct = _attainment(q_ids, q_marks_map) if q_ids else (0, 0, 0.0)
+            plan_obj = CLOActionPlan.objects.filter(course=selected_course, clo=clo).first()
+            clos_data.append({
+                'id': clo.id,
+                'code': clo.code,
+                'description': clo.description,
+                'students_assessed': s_assessed,
+                'students_passed': s_passed,
+                'attainment_pct': attainment_pct,
+                'attained': attainment_pct >= 60,
+                'action_plan': plan_obj.action_plan if plan_obj else '',
+            })
+
+        # PLO mapping via CLO.plos (PLOs are assigned to CLOs, not questions directly)
+        plo_q_map = defaultdict(set)
+        plo_obj_map = {}
+        for clo in selected_course.clos.all():
+            q_ids = list(Question.objects.filter(assessment__in=assessments, clos=clo).values_list('id', flat=True))
+            for plo in clo.plos.all():
+                plo_q_map[plo.id].update(q_ids)
+                plo_obj_map[plo.id] = plo
+
+        for plo_id, q_id_set in plo_q_map.items():
+            plo = plo_obj_map[plo_id]
+            q_ids = list(q_id_set)
+            if not q_ids:
+                continue
+            q_marks_map = {qid: q_maxmarks[qid] for qid in q_ids if qid in q_maxmarks}
+            s_passed, s_assessed, attainment_pct = _attainment(q_ids, q_marks_map)
+            plan_obj = PLOActionPlan.objects.filter(course=selected_course, plo=plo).first()
+            plos_data.append({
+                'id': plo.id,
+                'code': plo.code,
+                'description': plo.description,
+                'students_assessed': s_assessed,
+                'students_passed': s_passed,
+                'attainment_pct': attainment_pct,
+                'attained': attainment_pct >= 60,
+                'action_plan': plan_obj.action_plan if plan_obj else '',
+            })
+
+        max_len = max(len(clos_data), len(plos_data), 1)
+        for i in range(max_len):
+            rows.append({
+                'clo': clos_data[i] if i < len(clos_data) else None,
+                'plo': plos_data[i] if i < len(plos_data) else None,
+            })
+
+    return render(request, 'faculty/escar.html', {
+        'courses': courses,
+        'selected_course': selected_course,
+        'rows': rows,
+        'total_enrolled': total_enrolled,
+        'total_participated': total_participated,
+        'total_absent': total_absent,
+    })
+
+
+@faculty_required
+def save_escar_plan(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=400)
+    data = json.loads(request.body)
+    course = get_object_or_404(Course, id=data['course_id'], faculty=request.user)
+    plan_type = data.get('type')
+    plan_text = data.get('action_plan', '')
+    if plan_type == 'clo':
+        clo = get_object_or_404(CLO, id=data['id'], course=course)
+        obj, _ = CLOActionPlan.objects.get_or_create(course=course, clo=clo)
+        obj.action_plan = plan_text
+        obj.save()
+    elif plan_type == 'plo':
+        plo = get_object_or_404(PLO, id=data['id'])
+        obj, _ = PLOActionPlan.objects.get_or_create(course=course, plo=plo)
+        obj.action_plan = plan_text
+        obj.save()
+    else:
+        return JsonResponse({'error': 'Invalid type'}, status=400)
+    return JsonResponse({'success': True})
+
+
+@faculty_required
 def faculty_announcements(request):
     courses = Course.objects.filter(faculty=request.user)
     announcements = Announcement.objects.filter(
@@ -755,10 +963,15 @@ def student_submissions(request):
         student=request.user, assessment__in=assessments
     ).select_related('assessment__course').order_by('-submitted_at')
     submitted_ids = submissions.values_list('assessment_id', flat=True)
-    pending_assessments = assessments.exclude(id__in=submitted_ids)
+    pending = assessments.exclude(id__in=submitted_ids)
+    today = date.today()
+    todo_assessments = pending.filter(due_date__gte=today) | pending.filter(due_date__isnull=True)
+    missing_assessments = pending.filter(due_date__lt=today)
     return render(request, 'student/submissions.html', {
         'submissions': submissions,
-        'pending_assessments': pending_assessments,
+        'todo_assessments': todo_assessments,
+        'missing_assessments': missing_assessments,
+        'pending_assessments': todo_assessments | missing_assessments,
     })
 
 

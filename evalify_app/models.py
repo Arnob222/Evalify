@@ -330,6 +330,24 @@ class PastPaper(models.Model):
         return f"{self.course_code} | {self.semester} | {self.get_exam_type_display()}"
  
  
+class CLOActionPlan(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='clo_action_plans')
+    clo = models.ForeignKey(CLO, on_delete=models.CASCADE, related_name='action_plans')
+    action_plan = models.TextField(blank=True, default='')
+
+    class Meta:
+        unique_together = ('course', 'clo')
+
+
+class PLOActionPlan(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='plo_action_plans')
+    plo = models.ForeignKey(PLO, on_delete=models.CASCADE, related_name='action_plans')
+    action_plan = models.TextField(blank=True, default='')
+
+    class Meta:
+        unique_together = ('course', 'plo')
+
+
 class PastPaperQuestion(models.Model):
     DIFFICULTY_CHOICES = [
         ('easy',   'Easy'),
