@@ -124,6 +124,16 @@
           </a>
         </div>
       </div>
+
+      <!-- Leave Course -->
+      <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:10px;">
+        <button onclick="confirmLeave({{ course.id }}, '{{ course.code }}: {{ course.name }}')"
+                style="width:100%;background:#fff0f0;border:1px solid #fca5a5;color:#991b1b;
+                       border-radius:8px;padding:8px;font-size:12px;font-weight:600;
+                       cursor:pointer;">
+          Leave Course
+        </button>
+      </div>
     </div>
   </div>
   {% endfor %}
@@ -150,6 +160,15 @@ document.getElementById('enrollCodeInput').addEventListener('input', function() 
 document.getElementById('enrollCodeInput').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') joinCourse();
 });
+
+function confirmLeave(courseId, courseName) {
+  if (!confirm(`Leave "${courseName}"?\n\nYou will lose access to all its assignments and materials. You can re-join later with the enrollment code.`)) return;
+  apiPost(`/student/courses/${courseId}/unenroll/`, {})
+    .then(res => {
+      if (res.success) location.reload();
+      else alert(res.error || 'Something went wrong.');
+    });
+}
 
 async function joinCourse() {
   const code  = document.getElementById('enrollCodeInput').value.trim().toUpperCase();

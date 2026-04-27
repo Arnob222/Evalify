@@ -36,6 +36,8 @@ urlpatterns = [
     path('faculty/assignments/', views.faculty_assignments, name='faculty_assignments'),
     path('faculty/assignments/create/', views.create_assignment, name='create_assignment'),
     path('faculty/assignments/<int:assignment_id>/delete/', views.delete_assignment, name='delete_assignment'),
+    path('faculty/assignments/<int:assignment_id>/data/', views.get_assessment_data, name='get_assessment_data'),
+    path('faculty/assignments/<int:assignment_id>/edit/', views.edit_assessment, name='edit_assessment'),
     path('faculty/assignments/<int:assignment_id>/publish/', views.publish_assessment, name='publish_assessment'),
 
     #Marks Sheet
@@ -54,6 +56,7 @@ urlpatterns = [
     path('student/courses/', views.student_courses, name='student_courses'),
     path('student/courses/enroll-code/', views.enroll_via_code, name='enroll_via_code'),
     path('student/courses/<int:course_id>/enroll/', views.enroll_course, name='enroll_course'),
+    path('student/courses/<int:course_id>/unenroll/', views.unenroll_course, name='unenroll_course'),
     path('student/submissions/', views.student_submissions, name='student_submissions'),
     path('student/submissions/<int:assessment_id>/submit/', views.submit_assessment, name='submit_assessment'),
     path('student/clo-results/', views.student_clo_results, name='student_clo_results'),

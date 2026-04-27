@@ -258,8 +258,12 @@
       <div style="font-size:12px;color:var(--gray);margin-top:3px;">{{ a.description }}</div>
       {% endif %}
     </div>
-    <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:#fca5a5;"
-            onclick="deleteAssessment({{ a.id }})">Delete</button>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <button class="btn btn-outline btn-sm"
+              onclick="openEditModal({{ a.id }})">Edit</button>
+      <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:#fca5a5;"
+              onclick="deleteAssessment({{ a.id }})">Delete</button>
+    </div>
   </div>
   {% endfor %}
 {% else %}
@@ -278,7 +282,7 @@
   <div class="modal" style="max-width:780px;">
     <div class="modal-head">
       <span class="modal-title">Create Assessment — {{ selected_course.code }}</span>
-      <button class="modal-close" onclick="closeModal('createModal')">&times;</button>
+      <button class="modal-close" onclick="closeModal('createModal');_resetCreateModal();">&times;</button>
     </div>
     <div class="modal-body">
 
@@ -593,7 +597,7 @@ function addQuestion() {
       <label class="form-label">Question Text</label>
       <textarea class="form-control q-text" rows="2" placeholder="Enter question text…"></textarea>
     </div>
-    ${imgUploadHtml('q-image-input','qimg-${n}','qimg-rm-${n}')}
+    ${imgUploadHtml('q-image-input',`qimg-${n}`,`qimg-rm-${n}`)}
     <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <span style="font-size:12px;font-weight:700;color:var(--teal);">Sub-questions</span>
@@ -632,7 +636,7 @@ function addSubQuestion(n) {
       <textarea class="form-control sq-text" rows="2"
                 placeholder="Sub-question text…"></textarea>
     </div>
-    ${imgUploadHtml('sq-image-input','sqimg-${n}-${m}','sqimg-rm-${n}-${m}')}
+    ${imgUploadHtml('sq-image-input',`sqimg-${n}-${m}`,`sqimg-rm-${n}-${m}`)}
     <div style="display:grid;grid-template-columns:90px 1fr 1fr;gap:10px;align-items:start;">
       <div class="form-group" style="margin-bottom:0;">
         <label class="form-label">Marks</label>
@@ -728,7 +732,7 @@ function calcTotal() {
   document.getElementById('aMarks').value = t || '';
 }
 
-// ── Submit ────────────────────────────────────────────────────────────────
+// ── Submit (create or edit) ───────────────────────────────────────────────
 async function submitCreate() {
   const errEl = document.getElementById('createError');
   const type  = document.getElementById('typeSelect').value;
@@ -738,7 +742,7 @@ async function submitCreate() {
   errEl.style.display = 'none';
 
   if (!title) { errEl.textContent='Title is required.'; errEl.style.display='block'; return; }
-  if (type === 'assignment' && !due) {
+  if (!currentEditId && type === 'assignment' && !due) {
     errEl.textContent='Due date is required for assignments.'; errEl.style.display='block'; return;
   }
   const questions = [];
@@ -751,11 +755,13 @@ async function submitCreate() {
       errEl.style.display = 'block'; valid = false; return;
     }
     const n = card.id.replace('qcard-', '');
-    // Question image — read from preview img src (already base64 via FileReader)
-    const qImgEl = document.getElementById(`qimg-${n}`);
-    const image_b64 = (qImgEl && qImgEl.src && qImgEl.style.display !== 'none') ? qImgEl.src : null;
 
-    // Sub-questions
+    // Image: new upload (data:) takes precedence; else keep existing server file
+    const qImgEl = document.getElementById(`qimg-${n}`);
+    const qImgSrc = (qImgEl && qImgEl.style.display !== 'none') ? qImgEl.src : null;
+    const image_b64 = (qImgSrc && qImgSrc.startsWith('data:')) ? qImgSrc : null;
+    const existing_image_name = (!image_b64 && qImgSrc) ? (qImgEl.dataset.existingImageName || null) : null;
+
     const sub_questions = [];
     card.querySelectorAll(`#sqcon-${n} [id^="sqcard-"]`).forEach(sqCard => {
       if (!valid) return;
@@ -767,34 +773,45 @@ async function submitCreate() {
       const sqMarks = parseInt(sqCard.querySelector('.sq-marks').value) || 0;
       const sqMN    = sqCard.id.replace(`sqcard-${n}-`, '');
       const sqImgEl = document.getElementById(`sqimg-${n}-${sqMN}`);
-      const sq_image_b64 = (sqImgEl && sqImgEl.src && sqImgEl.style.display !== 'none') ? sqImgEl.src : null;
+      const sqImgSrc = (sqImgEl && sqImgEl.style.display !== 'none') ? sqImgEl.src : null;
+      const sq_image_b64 = (sqImgSrc && sqImgSrc.startsWith('data:')) ? sqImgSrc : null;
+      const sq_existing_image_name = (!sq_image_b64 && sqImgSrc) ? (sqImgEl.dataset.existingImageName || null) : null;
       const clo_ids = [...sqCard.querySelectorAll('.sq-clo-list input:checked')].map(i => parseInt(i.value));
       const plo_ids = [...sqCard.querySelectorAll('.sq-plo-list input:checked')].map(i => parseInt(i.value));
-      sub_questions.push({ text: sqText, max_marks: sqMarks, image_b64: sq_image_b64, clo_ids, plo_ids });
+      sub_questions.push({ text: sqText, max_marks: sqMarks, image_b64: sq_image_b64, existing_image_name: sq_existing_image_name, clo_ids, plo_ids });
     });
     if (!valid) return;
 
     const qTotal = parseInt(document.getElementById(`qtotal-${n}`)?.textContent) || 0;
-    questions.push({ text, image_b64, max_marks: qTotal, sub_questions });
+    questions.push({ text, image_b64, existing_image_name, max_marks: qTotal, sub_questions });
   });
   if (!valid) return;
 
-  const data = await apiPost("{% url 'create_assignment' %}", {
+  const payload = {
     course_id: {{ selected_course.id }},
     assessment_type: type, title, description: desc,
-    due_date:             due,
+    due_date:             due || null,
     publish_immediately:  currentVisibility === 'published',
     grace_period_hours:   parseInt(document.getElementById('aGraceHours').value)   || 0,
     late_deduction_type:  document.getElementById('aDeductType').value,
     late_deduction_value: parseFloat(document.getElementById('aDeductValue').value) || 0,
     max_late_days:        parseInt(document.getElementById('aMaxLateDays').value)   || 0,
-    total_marks: parseInt(document.getElementById('aMarks').value)||0, questions
-  });
+    total_marks: parseInt(document.getElementById('aMarks').value) || 0,
+    questions,
+  };
+
+  const url = currentEditId
+    ? `/faculty/assignments/${currentEditId}/edit/`
+    : "{% url 'create_assignment' %}";
+
+  const data = await apiPost(url, payload);
 
   if (data.success) {
+    closeModal('createModal');
+    _resetCreateModal();
     location.reload();
   } else {
-    errEl.textContent = data.error || 'Failed to create assessment.';
+    errEl.textContent = data.error || (currentEditId ? 'Failed to save changes.' : 'Failed to create assessment.');
     errEl.style.display = 'block';
   }
 }
@@ -818,6 +835,105 @@ async function deleteAssessment(id) {
   });
   const data = await res.json();
   if (data.success) document.getElementById(`asgn-${id}`).remove();
+}
+
+// ── Edit ──────────────────────────────────────────────────────────────────
+let currentEditId = null;
+
+async function openEditModal(id) {
+  let d;
+  try {
+    const res = await fetch(`/faculty/assignments/${id}/data/`);
+    d = await res.json();
+  } catch(e) { alert('Failed to load assessment data. Check server logs.'); return; }
+  if (d.error) { alert(d.error); return; }
+
+  currentEditId = id;
+  document.querySelector('#createModal .modal-title').textContent =
+    'Edit Assessment — {{ selected_course.code }}';
+  document.querySelector('#createModal .modal-foot .btn-primary').textContent = 'Save Changes';
+
+  // Basic fields
+  const sel = document.getElementById('typeSelect');
+  let matched = [...sel.options].some(o => o.value === d.assessment_type);
+  if (!matched) {
+    const opt = document.createElement('option');
+    opt.value = d.assessment_type; opt.textContent = d.assessment_type;
+    sel.appendChild(opt);
+  }
+  sel.value = d.assessment_type;
+  onTypeChange();
+  setVisibility(d.status === 'published' ? 'published' : 'draft');
+  document.getElementById('aTitle').value        = d.title;
+  document.getElementById('aDesc').value         = d.description || '';
+  document.getElementById('aDue').value          = d.due_date || '';
+  document.getElementById('aGraceHours').value   = d.grace_period_hours;
+  document.getElementById('aMaxLateDays').value  = d.max_late_days;
+  document.getElementById('aDeductType').value   = d.late_deduction_type;
+  document.getElementById('aDeductValue').value  = d.late_deduction_value;
+  updateGracePreview();
+
+  // Rebuild questions
+  document.getElementById('questionsContainer').innerHTML = '';
+  qCount = 0;
+  Object.keys(sqCounters).forEach(k => delete sqCounters[k]);
+  document.getElementById('noQMsg').style.display = d.questions.length ? 'none' : 'block';
+
+  for (const q of d.questions) {
+    addQuestion();
+    const n = qCount;
+    document.getElementById(`qcard-${n}`).querySelector('.q-text').value = q.text;
+
+    if (q.image_url) {
+      const imgEl = document.getElementById(`qimg-${n}`);
+      if (imgEl) {
+        imgEl.src = q.image_url;
+        imgEl.style.display = 'block';
+        imgEl.dataset.existingImageName = q.image_name || '';
+        const rmBtn = document.getElementById(`qimg-rm-${n}`);
+        if (rmBtn) rmBtn.style.display = '';
+      }
+    }
+
+    for (const sq of q.sub_questions) {
+      addSubQuestion(n);
+      const m = sqCounters[n];
+      const sqCard = document.getElementById(`sqcard-${n}-${m}`);
+      sqCard.querySelector('.sq-text').value  = sq.text;
+      sqCard.querySelector('.sq-marks').value = sq.max_marks;
+
+      if (sq.image_url) {
+        const sqImgEl = document.getElementById(`sqimg-${n}-${m}`);
+        if (sqImgEl) {
+          sqImgEl.src = sq.image_url;
+          sqImgEl.style.display = 'block';
+          sqImgEl.dataset.existingImageName = sq.image_name || '';
+          const rmBtn = document.getElementById(`sqimg-rm-${n}-${m}`);
+          if (rmBtn) rmBtn.style.display = '';
+        }
+      }
+
+      // Pre-check CLOs
+      sqCard.querySelectorAll('.sq-clo-list input').forEach(cb => {
+        if (sq.clo_ids.includes(parseInt(cb.value))) cb.checked = true;
+      });
+      updateSubPlos(n, m);
+      // Pre-check PLOs after they've been rendered
+      sqCard.querySelectorAll('.sq-plo-list input').forEach(cb => {
+        if (sq.plo_ids.includes(parseInt(cb.value))) cb.checked = true;
+      });
+      calcSubTotal(n);
+    }
+  }
+  calcTotal();
+  openModal('createModal');
+}
+
+function _resetCreateModal() {
+  currentEditId = null;
+  document.querySelector('#createModal .modal-title').textContent =
+    'Create Assessment — {{ selected_course.code }}';
+  document.querySelector('#createModal .modal-foot .btn-primary').textContent = 'Create';
 }
 
 // ── Grace Period helpers ──────────────────────────────────────────────────

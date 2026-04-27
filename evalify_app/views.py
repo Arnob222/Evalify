@@ -8,7 +8,8 @@ from collections import defaultdict
 import json
 import base64
 import uuid
-from datetime import date
+from datetime import date, timedelta
+from django.utils import timezone
 from .models import (User, Course, CLO, PLO, Assessment, Question, SubQuestion, SubQuestionGrade,
                      Enrollment, Submission, QuestionGrade, Announcement, StudyMaterial, Notification,
                      CLOActionPlan, PLOActionPlan)
@@ -135,24 +136,40 @@ def student_required(view_func):
 
 @faculty_required
 def faculty_dashboard(request):
-    courses = Course.objects.filter(faculty=request.user)
+    now = timezone.now()
+    courses = Course.objects.filter(faculty=request.user).prefetch_related('enrollments', 'clos')
     assessments = Assessment.objects.filter(course__in=courses)
     pending_subs = Submission.objects.filter(assessment__in=assessments, status='submitted')
     flagged_subs = Submission.objects.filter(assessment__in=assessments, status='flagged')
+    graded_subs  = Submission.objects.filter(assessment__in=assessments, status='graded')
+    total_students = Enrollment.objects.filter(course__in=courses).values('student').distinct().count()
+
     recent_submissions = Submission.objects.filter(
         assessment__in=assessments
-    ).select_related('student', 'assessment').order_by('-submitted_at')[:8]
-    announcements = Announcement.objects.filter(
-        course__in=courses
-    ).order_by('-created_at')[:5]
+    ).select_related('student', 'assessment', 'assessment__course').order_by('-submitted_at')[:6]
+
+    announcements = Announcement.objects.filter(course__in=courses).order_by('-created_at')[:4]
+
+    upcoming = assessments.filter(
+        status='published', due_date__gte=now, due_date__lte=now + timedelta(days=7)
+    ).select_related('course').order_by('due_date')
+
+    courses_stats = []
+    for course in courses:
+        course.enrolled_count  = course.enrollments.count()
+        course.pending_grading = pending_subs.filter(assessment__course=course).count()
+        courses_stats.append(course)
 
     return render(request, 'faculty/dashboard.html', {
-        'courses': courses,
+        'courses': courses_stats,
         'assessments_count': assessments.count(),
         'pending_count': pending_subs.count(),
         'flagged_count': flagged_subs.count(),
+        'graded_count': graded_subs.count(),
+        'total_students': total_students,
         'recent_submissions': recent_submissions,
         'announcements': announcements,
+        'upcoming': upcoming,
     })
 
 
@@ -893,29 +910,38 @@ def delete_announcement(request, ann_id):
 
 @student_required
 def student_dashboard(request):
-    enrollments = Enrollment.objects.filter(student=request.user).select_related('course')
+    now = timezone.now()
+    enrollments = Enrollment.objects.filter(student=request.user).select_related('course', 'course__faculty')
     courses = [e.course for e in enrollments]
     assessments = Assessment.objects.filter(course__in=courses, status='published')
     submissions = Submission.objects.filter(student=request.user, assessment__in=assessments)
     submitted_ids = submissions.values_list('assessment_id', flat=True)
-    pending_count = assessments.exclude(id__in=submitted_ids).count()
-    graded = submissions.filter(status='graded')
+
+    pending_qs = assessments.exclude(id__in=submitted_ids).select_related('course').order_by('due_date')
+    pending_count = pending_qs.count()
+    upcoming = pending_qs.filter(due_date__isnull=False, due_date__gte=now)[:5]
+
+    graded = submissions.filter(status='graded').select_related('assessment', 'assessment__course')
     avg_grade = 0
     if graded.exists():
         total_pct = sum(
-            (s.total_score / s.assessment.total_marks * 100)
+            s.total_score / s.assessment.total_marks * 100
             for s in graded if s.assessment.total_marks > 0
         )
         avg_grade = round(total_pct / graded.count(), 1)
-    recent_grades = graded.select_related('assessment').order_by('-submitted_at')[:5]
-    announcements = Announcement.objects.filter(course__in=courses).order_by('-created_at')[:5]
+
+    recent_grades = graded.order_by('-submitted_at')[:5]
+    announcements = Announcement.objects.filter(course__in=courses).order_by('-created_at')[:4]
+
     return render(request, 'student/dashboard.html', {
         'courses': courses,
         'submissions_count': submissions.count(),
         'pending_count': pending_count,
+        'graded_count': graded.count(),
         'avg_grade': avg_grade,
         'recent_grades': recent_grades,
         'announcements': announcements,
+        'upcoming': upcoming,
     })
 
 
@@ -944,6 +970,15 @@ def enroll_via_code(request):
             return JsonResponse({'error': 'You are already enrolled in this course.'}, status=400)
         except Course.DoesNotExist:
             return JsonResponse({'error': 'Invalid enrollment code. Please check and try again.'}, status=404)
+    return JsonResponse({'error': 'POST required'}, status=400)
+
+
+@student_required
+def unenroll_course(request, course_id):
+    if request.method == 'POST':
+        enrollment = get_object_or_404(Enrollment, student=request.user, course_id=course_id)
+        enrollment.delete()
+        return JsonResponse({'success': True})
     return JsonResponse({'error': 'POST required'}, status=400)
 
 
@@ -1383,6 +1418,121 @@ def delete_assignment(request, assignment_id):
         Assessment, id=assignment_id, course__faculty=request.user
     )
     assignment.delete()
+    return JsonResponse({'success': True})
+
+
+@faculty_required
+def get_assessment_data(request, assignment_id):
+    assessment = get_object_or_404(Assessment, id=assignment_id, course__faculty=request.user)
+    questions = []
+    for q in assessment.questions.order_by('order'):
+        subs = []
+        for sq in q.sub_questions.order_by('order'):
+            subs.append({
+                'id': sq.id,
+                'text': sq.text,
+                'max_marks': sq.max_marks,
+                'image_url':  request.build_absolute_uri(sq.image.url) if sq.image else None,
+                'image_name': sq.image.name if sq.image else None,
+                'clo_ids': list(sq.clos.values_list('id', flat=True)),
+                'plo_ids': list(sq.plos.values_list('id', flat=True)),
+            })
+        questions.append({
+            'id': q.id,
+            'text': q.text,
+            'max_marks': q.max_marks,
+            'image_url':  request.build_absolute_uri(q.image.url) if q.image else None,
+            'image_name': q.image.name if q.image else None,
+            'clo_ids': list(q.clos.values_list('id', flat=True)),
+            'plo_ids': list(q.plos.values_list('id', flat=True)),
+            'sub_questions': subs,
+        })
+    return JsonResponse({
+        'id': assessment.id,
+        'title': assessment.title,
+        'description': assessment.description,
+        'assessment_type': assessment.assessment_type,
+        'due_date': str(assessment.due_date) if assessment.due_date else '',
+        'status': assessment.status,
+        'grace_period_hours':   assessment.grace_period_hours,
+        'max_late_days':        assessment.max_late_days,
+        'late_deduction_type':  assessment.late_deduction_type,
+        'late_deduction_value': assessment.late_deduction_value,
+        'questions': questions,
+    })
+
+
+@faculty_required
+def edit_assessment(request, assignment_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=400)
+    assessment = get_object_or_404(Assessment, id=assignment_id, course__faculty=request.user)
+    data = json.loads(request.body)
+    title = data.get('title', '').strip()
+    if not title:
+        return JsonResponse({'error': 'Title is required.'}, status=400)
+
+    assessment.title                = title
+    assessment.description          = data.get('description', '').strip()
+    assessment.due_date             = data.get('due_date') or None
+    assessment.grace_period_hours   = int(data.get('grace_period_hours', 0) or 0)
+    assessment.max_late_days        = int(data.get('max_late_days', 0) or 0)
+    assessment.late_deduction_type  = data.get('late_deduction_type', 'percent')
+    assessment.late_deduction_value = float(data.get('late_deduction_value', 0) or 0)
+    assessment.save()
+
+    # Rebuild all questions from submitted data
+    assessment.questions.all().delete()
+    total = 0
+    for i, q in enumerate(data.get('questions', []), 1):
+        question = Question.objects.create(
+            assessment=assessment, order=i, text=q['text'], max_marks=0,
+        )
+        img_file = _decode_image(q.get('image_b64'), f'q{i}')
+        if img_file:
+            question.image.save(img_file.name, img_file, save=False)
+        elif q.get('existing_image_name'):
+            question.image.name = q['existing_image_name']
+
+        sub_questions = q.get('sub_questions', [])
+        if sub_questions:
+            all_clo_ids, all_plo_ids, q_total = set(), set(), 0
+            for j, sq in enumerate(sub_questions, 1):
+                sub = SubQuestion.objects.create(
+                    question=question, order=j,
+                    text=sq['text'], max_marks=int(sq.get('max_marks', 5)),
+                )
+                sq_img = _decode_image(sq.get('image_b64'), f'sq{i}_{j}')
+                if sq_img:
+                    sub.image.save(sq_img.name, sq_img, save=False)
+                elif sq.get('existing_image_name'):
+                    sub.image.name = sq['existing_image_name']
+                if sq.get('clo_ids'):
+                    sub.clos.set(CLO.objects.filter(id__in=sq['clo_ids']))
+                    all_clo_ids.update(sq['clo_ids'])
+                if sq.get('plo_ids'):
+                    sub.plos.set(PLO.objects.filter(id__in=sq['plo_ids']))
+                    all_plo_ids.update(sq['plo_ids'])
+                sub.save()
+                q_total += int(sq.get('max_marks', 5))
+            question.max_marks = q_total
+            if all_clo_ids:
+                question.clos.set(CLO.objects.filter(id__in=all_clo_ids))
+            if all_plo_ids:
+                question.plos.set(PLO.objects.filter(id__in=all_plo_ids))
+            total += q_total
+        else:
+            question.max_marks = int(q.get('max_marks', 0))
+            if q.get('clo_ids'):
+                question.clos.set(CLO.objects.filter(id__in=q['clo_ids']))
+            if q.get('plo_ids'):
+                question.plos.set(PLO.objects.filter(id__in=q['plo_ids']))
+            total += question.max_marks
+        question.save()
+
+    manual_total = int(data.get('total_marks', 0))
+    assessment.total_marks = total if total > 0 else manual_total
+    assessment.save()
     return JsonResponse({'success': True})
 
 

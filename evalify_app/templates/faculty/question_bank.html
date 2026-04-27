@@ -109,10 +109,6 @@
                              white-space:nowrap;">Q{{ q.order }}</span>
                 <div style="flex:1;">
                   <div style="font-size:13px;font-weight:500;line-height:1.5;">{{ q.text }}</div>
-                  {% if q.image %}
-                  <img src="{{ q.image.url }}" style="max-width:100%;max-height:140px;margin-top:6px;
-                       border-radius:7px;border:1px solid var(--border);">
-                  {% endif %}
                   {# CLO/PLO tags (question-level, aggregated from sub-questions) #}
                   {% if q.clos.all or q.plos.all %}
                   <div style="margin-top:5px;">
@@ -125,6 +121,12 @@
                   {{ q.max_marks }} marks
                 </span>
               </div>
+              {% if q.image %}
+              <div style="display:flex;justify-content:center;margin-top:8px;">
+                <img src="{{ q.image.url }}" style="max-width:100%;max-height:200px;
+                     border-radius:7px;border:1px solid var(--border);">
+              </div>
+              {% endif %}
 
               {# Sub-questions #}
               {% with subs=q.sub_questions.all %}
@@ -139,10 +141,6 @@
                   </span>
                   <div style="flex:1;">
                     <div style="font-size:12px;line-height:1.5;">{{ sq.text }}</div>
-                    {% if sq.image %}
-                    <img src="{{ sq.image.url }}" style="max-width:100%;max-height:120px;margin-top:5px;
-                         border-radius:6px;border:1px solid var(--border);">
-                    {% endif %}
                     {% if sq.clos.all or sq.plos.all %}
                     <div style="margin-top:4px;">
                       {% for c in sq.clos.all %}<span class="tag tag-clo" style="font-size:10px;">{{ c.code }}</span>{% endfor %}
@@ -154,6 +152,12 @@
                     {{ sq.max_marks }} marks
                   </span>
                 </div>
+                {% if sq.image %}
+                <div style="display:flex;justify-content:center;margin-top:8px;">
+                  <img src="{{ sq.image.url }}" style="max-width:100%;max-height:160px;
+                       border-radius:6px;border:1px solid var(--border);">
+                </div>
+                {% endif %}
               </div>
               {% endfor %}
               {% endif %}

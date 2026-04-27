@@ -170,23 +170,7 @@
               {{ course.enrollment_code }}
             </span>
             <button class="btn btn-outline btn-sm" onclick="openAddStudent({{ course.id }})">+ Add Manually</button>
-      <!--Students-->
-      <div class="tab-content" data-tab-content="students_{{ course.id }}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <strong style="font-size:14px;">Enrolled Students ({{ course.enrollments.count }})</strong>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-outline btn-sm" onclick="openAddStudent({{ course.id }})">+ Add Student</button>
             <button class="btn btn-outline btn-sm" onclick="openRangeModal({{ course.id }})" style="color:var(--teal);border-color:var(--teal);">+ Add by ID Range</button>
-          </div>
-        </div>
-        {% for enroll in course.enrollments.all %}
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px;">
-          <div style="width:32px;height:32px;border-radius:50%;background:#20b2aa;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">
-            {{ enroll.student.full_name|first|default:enroll.student.username|first|upper }}
-          </div>
-          <div>
-            <div style="font-size:14px;font-weight:500;">{{ enroll.student.full_name|default:enroll.student.username }}</div>
-            <div style="font-size:12px;color:#9ca3af;">{{ enroll.student.email }}</div>
           </div>
         </div>
         {% if course.enrollments.count > 0 %}

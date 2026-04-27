@@ -49,11 +49,6 @@
         </span>
         <div style="flex:1;">
           <div style="font-size:14px;font-weight:500;line-height:1.5;">{{ q.text }}</div>
-          {% if q.image %}
-          <img src="{{ q.image.url }}"
-               style="max-width:100%;max-height:200px;margin-top:8px;
-                      border-radius:8px;border:1px solid var(--border);">
-          {% endif %}
           {% if q.clos.all or q.plos.all %}
           <div style="margin-top:6px;">
             {% for c in q.clos.all %}<span class="tag tag-clo">{{ c.code }}</span>{% endfor %}
@@ -65,6 +60,12 @@
           {{ q.max_marks }} mark{{ q.max_marks|pluralize }}
         </span>
       </div>
+      {% if q.image %}
+      <div style="display:flex;justify-content:center;margin-top:8px;">
+        <img src="{{ q.image.url }}"
+             style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--border);">
+      </div>
+      {% endif %}
 
       <!-- Sub-questions -->
       {% with subs=q.sub_questions.all %}
@@ -79,11 +80,6 @@
           </span>
           <div style="flex:1;">
             <div style="font-size:13px;line-height:1.5;">{{ sq.text }}</div>
-            {% if sq.image %}
-            <img src="{{ sq.image.url }}"
-                 style="max-width:100%;max-height:160px;margin-top:6px;
-                        border-radius:7px;border:1px solid var(--border);">
-            {% endif %}
             {% if sq.clos.all or sq.plos.all %}
             <div style="margin-top:4px;">
               {% for c in sq.clos.all %}<span class="tag tag-clo" style="font-size:10px;">{{ c.code }}</span>{% endfor %}
@@ -95,6 +91,12 @@
             {{ sq.max_marks }} mark{{ sq.max_marks|pluralize }}
           </span>
         </div>
+        {% if sq.image %}
+        <div style="display:flex;justify-content:center;margin-top:8px;">
+          <img src="{{ sq.image.url }}"
+               style="max-width:100%;max-height:160px;border-radius:7px;border:1px solid var(--border);">
+        </div>
+        {% endif %}
       </div>
       {% endfor %}
       {% endif %}
