@@ -101,5 +101,8 @@ urlpatterns = [
     path('admin-portal/materials/<int:material_id>/delete/', views.admin_delete_material, name='admin_delete_material'),
 
 
+# Assessment Download
+    path('faculty/assignments/<int:assessment_id>/download/<str:fmt>/', views.download_assessment, name='download_assessment'),
+
 
 ]

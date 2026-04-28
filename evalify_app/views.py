@@ -2432,3 +2432,330 @@ def admin_delete_material(request, material_id):
         m.delete()
         messages.success(request, 'Material deleted.')
     return redirect('admin_materials')
+
+
+
+
+# ── Assessment Download (PDF / DOCX) ─────────────────────────────────────────
+
+@faculty_required
+def download_assessment(request, assessment_id, fmt):
+    from django.http import HttpResponse
+    assessment = get_object_or_404(
+        Assessment, id=assessment_id, course__faculty=request.user
+    )
+    questions = assessment.questions.prefetch_related(
+        'clos', 'plos', 'sub_questions__clos', 'sub_questions__plos'
+    ).order_by('order')
+
+    if fmt == 'pdf':
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                        Table, TableStyle, HRFlowable)
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER
+        import io
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4,
+                                leftMargin=2*cm, rightMargin=2*cm,
+                                topMargin=2*cm, bottomMargin=2*cm)
+        styles = getSampleStyleSheet()
+        TEAL   = colors.HexColor('#20B2AA')
+        LTEAL  = colors.HexColor('#e6f7f7')
+        ORANGE = colors.HexColor('#f97316')
+        GRAY   = colors.HexColor('#6b7280')
+
+        title_style = ParagraphStyle('ATitle', parent=styles['Normal'],
+            fontSize=18, fontName='Helvetica-Bold', textColor=TEAL, spaceAfter=4, leading=22)
+        sub_style   = ParagraphStyle('ASub', parent=styles['Normal'],
+            fontSize=10, fontName='Helvetica', textColor=GRAY, spaceAfter=2)
+        qnum_style  = ParagraphStyle('QNum', parent=styles['Normal'],
+            fontSize=12, fontName='Helvetica-Bold', textColor=TEAL)
+        qtext_style = ParagraphStyle('QText', parent=styles['Normal'],
+            fontSize=11, fontName='Helvetica', leading=15)
+        sq_style    = ParagraphStyle('SQText', parent=styles['Normal'],
+            fontSize=10, fontName='Helvetica', leftIndent=20, leading=14,
+            textColor=colors.HexColor('#374151'))
+
+        story = []
+
+        header_data = [[
+            Paragraph(f"{assessment.course.code}: {assessment.course.name}", title_style),
+            Paragraph(
+                f"<font color='#20B2AA'><b>{assessment.get_assessment_type_display()}</b></font>",
+                ParagraphStyle('th', parent=styles['Normal'], fontSize=13,
+                               fontName='Helvetica-Bold', alignment=TA_CENTER)
+            )
+        ]]
+        ht = Table(header_data, colWidths=['75%', '25%'])
+        ht.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), LTEAL),
+            ('BOX',        (0,0), (-1,-1), 0.5, TEAL),
+            ('ROUNDEDCORNERS', [6]),
+            ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
+            ('LEFTPADDING',(0,0), (-1,-1), 14),
+            ('RIGHTPADDING',(0,0),(-1,-1), 14),
+            ('TOPPADDING', (0,0), (-1,-1), 12),
+            ('BOTTOMPADDING',(0,0),(-1,-1),12),
+        ]))
+        story.append(ht)
+        story.append(Spacer(1, 10))
+
+        due_txt  = str(assessment.due_date) if assessment.due_date else 'No due date'
+        meta_txt = (f"<b>Total Marks:</b> {assessment.total_marks} &nbsp;&nbsp; "
+                    f"<b>Due Date:</b> {due_txt} &nbsp;&nbsp; "
+                    f"<b>Semester:</b> {assessment.course.semester}")
+        if assessment.description:
+            meta_txt += f"<br/><b>Description:</b> {assessment.description}"
+        story.append(Paragraph(meta_txt, sub_style))
+        story.append(Spacer(1, 6))
+        story.append(HRFlowable(width='100%', thickness=1, color=TEAL))
+        story.append(Spacer(1, 12))
+
+        for q in questions:
+            clo_codes = ', '.join(c.code for c in q.clos.all()) or '—'
+            plo_codes = ', '.join(p.code for p in q.plos.all()) or '—'
+
+            q_data = [[
+                Paragraph(f"Q{q.order}", qnum_style),
+                Paragraph(q.text, qtext_style),
+                Paragraph(f"<b>{q.max_marks} marks</b>",
+                          ParagraphStyle('mk', parent=styles['Normal'],
+                                         fontSize=11, fontName='Helvetica-Bold',
+                                         alignment=TA_CENTER, textColor=ORANGE))
+            ]]
+            qt = Table(q_data, colWidths=[1*cm, '75%', '18%'])
+            qt.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+                ('BOX',       (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+                ('VALIGN',    (0,0), (-1,-1), 'TOP'),
+                ('LEFTPADDING',(0,0),(-1,-1), 10),
+                ('RIGHTPADDING',(0,0),(-1,-1),10),
+                ('TOPPADDING',(0,0),(-1,-1), 10),
+                ('BOTTOMPADDING',(0,0),(-1,-1), 4),
+            ]))
+            story.append(qt)
+
+            tag_data = [[
+                Paragraph(
+                    f"<font color='#1d4ed8'><b>CLO:</b> {clo_codes}</font> &nbsp;&nbsp; "
+                    f"<font color='#9d174d'><b>PLO:</b> {plo_codes}</font>",
+                    ParagraphStyle('tags', parent=styles['Normal'], fontSize=9,
+                                   fontName='Helvetica', textColor=GRAY, leading=12)
+                )
+            ]]
+            tt = Table(tag_data, colWidths=['100%'])
+            tt.setStyle(TableStyle([
+                ('BACKGROUND',(0,0),(-1,-1), colors.HexColor('#eff6ff')),
+                ('LEFTPADDING',(0,0),(-1,-1), 12),
+                ('RIGHTPADDING',(0,0),(-1,-1),12),
+                ('TOPPADDING',(0,0),(-1,-1), 5),
+                ('BOTTOMPADDING',(0,0),(-1,-1), 7),
+                ('BOX',(0,0),(-1,-1), 0.3, colors.HexColor('#bfdbfe')),
+            ]))
+            story.append(tt)
+
+            for sq in q.sub_questions.order_by('order'):
+                sq_clo = ', '.join(c.code for c in sq.clos.all()) or '—'
+                sq_plo = ', '.join(p.code for p in sq.plos.all()) or '—'
+                sq_data = [[
+                    Paragraph(f"({sq.order})", ParagraphStyle('sqn', parent=styles['Normal'],
+                        fontSize=10, fontName='Helvetica-Bold', textColor=GRAY)),
+                    Paragraph(sq.text, sq_style),
+                    Paragraph(f"<b>{sq.max_marks} marks</b>",
+                              ParagraphStyle('sqm', parent=styles['Normal'],
+                                             fontSize=9, fontName='Helvetica-Bold',
+                                             alignment=TA_CENTER, textColor=ORANGE))
+                ]]
+                stt = Table(sq_data, colWidths=[0.8*cm, '76%', '18%'])
+                stt.setStyle(TableStyle([
+                    ('BACKGROUND',(0,0),(-1,-1), colors.white),
+                    ('LEFTPADDING',(0,0),(-1,-1),18),
+                    ('RIGHTPADDING',(0,0),(-1,-1),10),
+                    ('TOPPADDING',(0,0),(-1,-1),4),
+                    ('BOTTOMPADDING',(0,0),(-1,-1),2),
+                    ('LINEBELOW',(0,0),(-1,-1),0.3, colors.HexColor('#e2e8f0')),
+                ]))
+                story.append(stt)
+                sq_tag = Table([[
+                    Paragraph(
+                        f"<font color='#1d4ed8'><b>CLO:</b> {sq_clo}</font> &nbsp;&nbsp; "
+                        f"<font color='#9d174d'><b>PLO:</b> {sq_plo}</font>",
+                        ParagraphStyle('sqtag', parent=styles['Normal'],
+                                       fontSize=8, fontName='Helvetica',
+                                       textColor=GRAY, leading=11, leftIndent=20)
+                    )
+                ]], colWidths=['100%'])
+                sq_tag.setStyle(TableStyle([
+                    ('BACKGROUND',(0,0),(-1,-1), colors.HexColor('#fdf4ff')),
+                    ('LEFTPADDING',(0,0),(-1,-1),30),
+                    ('TOPPADDING',(0,0),(-1,-1),3),
+                    ('BOTTOMPADDING',(0,0),(-1,-1),4),
+                ]))
+                story.append(sq_tag)
+
+            story.append(Spacer(1, 10))
+
+        doc.build(story)
+        buf.seek(0)
+        safe_title = assessment.title.replace(' ', '_')
+        response = HttpResponse(buf, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="{safe_title}_{assessment.course.code}.pdf"'
+        )
+        return response
+
+    elif fmt == 'docx':
+        from docx import Document
+        from docx.shared import Pt, RGBColor, Cm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+        import io
+
+        def hex_rgb(h):
+            h = h.lstrip('#')
+            return RGBColor(int(h[0:2],16), int(h[2:4],16), int(h[4:6],16))
+
+        def set_cell_bg(cell, hex_color):
+            tc   = cell._tc
+            tcPr = tc.get_or_add_tcPr()
+            shd  = OxmlElement('w:shd')
+            shd.set(qn('w:val'),   'clear')
+            shd.set(qn('w:color'), 'auto')
+            shd.set(qn('w:fill'),  hex_color.lstrip('#'))
+            tcPr.append(shd)
+
+        doc = Document()
+        for sec in doc.sections:
+            sec.top_margin    = Cm(2)
+            sec.bottom_margin = Cm(2)
+            sec.left_margin   = Cm(2.5)
+            sec.right_margin  = Cm(2.5)
+
+        t = doc.add_paragraph()
+        t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = t.add_run(f"{assessment.course.code}: {assessment.course.name}")
+        run.font.size = Pt(18); run.font.bold = True
+        run.font.color.rgb = hex_rgb('#20B2AA')
+
+        t2 = doc.add_paragraph()
+        t2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r2 = t2.add_run(assessment.get_assessment_type_display())
+        r2.font.size = Pt(13); r2.font.bold = True
+        r2.font.color.rgb = hex_rgb('#20B2AA')
+
+        due_txt = str(assessment.due_date) if assessment.due_date else 'No due date'
+        meta = doc.add_paragraph()
+        meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        mr = meta.add_run(
+            f"Total Marks: {assessment.total_marks}   |   "
+            f"Due Date: {due_txt}   |   "
+            f"Semester: {assessment.course.semester}"
+        )
+        mr.font.size = Pt(10); mr.font.color.rgb = hex_rgb('#6b7280')
+
+        if assessment.description:
+            dp = doc.add_paragraph()
+            dp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            dr = dp.add_run(f"Description: {assessment.description}")
+            dr.font.size = Pt(10); dr.font.italic = True
+
+        doc.add_paragraph()
+
+        for q in questions:
+            clo_codes = ', '.join(c.code for c in q.clos.all()) or '—'
+            plo_codes = ', '.join(p.code for p in q.plos.all()) or '—'
+
+            tbl = doc.add_table(rows=1, cols=3)
+            tbl.style = 'Table Grid'
+            tbl.columns[0].width = Cm(1.2)
+            tbl.columns[1].width = Cm(13)
+            tbl.columns[2].width = Cm(2.8)
+            row = tbl.rows[0]
+            set_cell_bg(row.cells[0], 'f0fafa')
+            set_cell_bg(row.cells[1], 'f8fafc')
+            set_cell_bg(row.cells[2], 'f8fafc')
+            c0 = row.cells[0].paragraphs[0]
+            r0 = c0.add_run(f"Q{q.order}")
+            r0.font.bold = True; r0.font.size = Pt(12)
+            r0.font.color.rgb = hex_rgb('#20B2AA')
+            c1 = row.cells[1].paragraphs[0]
+            r1 = c1.add_run(q.text); r1.font.size = Pt(11)
+            c2 = row.cells[2].paragraphs[0]
+            c2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            r2 = c2.add_run(f"{q.max_marks} marks")
+            r2.font.bold = True; r2.font.size = Pt(11)
+            r2.font.color.rgb = hex_rgb('#f97316')
+
+            tbl2 = doc.add_table(rows=1, cols=1)
+            tbl2.style = 'Table Grid'
+            tc = tbl2.rows[0].cells[0]
+            set_cell_bg(tc, 'eff6ff')
+            cp = tc.paragraphs[0]
+            cr1 = cp.add_run(f"CLO: {clo_codes}     ")
+            cr1.font.bold = True; cr1.font.size = Pt(9)
+            cr1.font.color.rgb = hex_rgb('#1d4ed8')
+            cr2 = cp.add_run(f"PLO: {plo_codes}")
+            cr2.font.bold = True; cr2.font.size = Pt(9)
+            cr2.font.color.rgb = hex_rgb('#9d174d')
+
+            for sq in q.sub_questions.order_by('order'):
+                sq_clo = ', '.join(c.code for c in sq.clos.all()) or '—'
+                sq_plo = ', '.join(p.code for p in sq.plos.all()) or '—'
+                stbl = doc.add_table(rows=1, cols=3)
+                stbl.style = 'Table Grid'
+                stbl.columns[0].width = Cm(1.2)
+                stbl.columns[1].width = Cm(13)
+                stbl.columns[2].width = Cm(2.8)
+                sr = stbl.rows[0]
+                set_cell_bg(sr.cells[0], 'ffffff')
+                set_cell_bg(sr.cells[1], 'ffffff')
+                set_cell_bg(sr.cells[2], 'ffffff')
+                sr.cells[0].paragraphs[0].add_run(f"  ({sq.order})").font.size = Pt(9)
+                st = sr.cells[1].paragraphs[0]
+                st.paragraph_format.left_indent = Cm(0.5)
+                st.add_run(sq.text).font.size = Pt(10)
+                sm = sr.cells[2].paragraphs[0]
+                sm.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                smr = sm.add_run(f"{sq.max_marks} marks")
+                smr.font.bold = True; smr.font.size = Pt(9)
+                smr.font.color.rgb = hex_rgb('#f97316')
+                stbl2 = doc.add_table(rows=1, cols=1)
+                stbl2.style = 'Table Grid'
+                stc = stbl2.rows[0].cells[0]
+                set_cell_bg(stc, 'fdf4ff')
+                scp = stc.paragraphs[0]
+                scp.paragraph_format.left_indent = Cm(0.8)
+                scr1 = scp.add_run(f"CLO: {sq_clo}     ")
+                scr1.font.bold = True; scr1.font.size = Pt(8)
+                scr1.font.color.rgb = hex_rgb('#1d4ed8')
+                scr2 = scp.add_run(f"PLO: {sq_plo}")
+                scr2.font.bold = True; scr2.font.size = Pt(8)
+                scr2.font.color.rgb = hex_rgb('#9d174d')
+
+            doc.add_paragraph()
+
+        buf = io.BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+        safe_title = assessment.title.replace(' ', '_')
+        response = HttpResponse(
+            buf,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        response['Content-Disposition'] = (
+            f'attachment; filename="{safe_title}_{assessment.course.code}.docx"'
+        )
+        return response
+
+    from django.http import Http404
+    raise Http404("Invalid format")
+
+
+
+
+
