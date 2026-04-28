@@ -200,10 +200,10 @@
       {% endif %}
     </div>
     {% if existing_sub.status != 'graded' %}
-    <form method="post" action="{% url 'unsubmit_assignment' assignment.id %}"
-          onsubmit="return confirm('Unsubmit this assignment? You can then make changes and resubmit.');">
+    <form id="unsubmitForm" method="post" action="{% url 'unsubmit_assignment' assignment.id %}">
       {% csrf_token %}
-      <button type="submit"
+      <button type="button"
+              onclick="customConfirm({icon:'↩️',title:'Unsubmit Assignment?',message:'You can make changes and resubmit. Your previous submission will be removed.',okText:'Unsubmit',okColor:'#dc2626',onConfirm:()=>document.getElementById('unsubmitForm').submit()})"
               style="background:#fff;border:1px solid #fca5a5;color:#dc2626;
                      padding:7px 16px;border-radius:7px;font-size:13px;font-weight:600;
                      cursor:pointer;display:flex;align-items:center;gap:6px;">

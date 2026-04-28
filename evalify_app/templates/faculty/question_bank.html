@@ -536,14 +536,20 @@ async function submitPaper() {
   else { errEl.textContent = res.error || 'Error.'; errEl.style.display = 'block'; }
 }
 
-async function deletePaper(id) {
-  if (!confirm('Delete this past paper?')) return;
-  const res = await apiPost(`/faculty/question-bank/${id}/delete/`, {});
-  if (res.success) {
-    const el = document.getElementById(`paper-${id}`);
-    el.style.opacity = '0'; el.style.transition = 'opacity .3s';
-    setTimeout(() => el.remove(), 300);
-  }
+function deletePaper(id) {
+  customConfirm({
+    icon: '📋', title: 'Delete Past Paper?',
+    message: 'This paper and all its questions will be permanently removed.',
+    okText: 'Delete', okColor: '#ef4444',
+    onConfirm: async () => {
+      const res = await apiPost(`/faculty/question-bank/${id}/delete/`, {});
+      if (res.success) {
+        const el = document.getElementById(`paper-${id}`);
+        el.style.opacity = '0'; el.style.transition = 'opacity .3s';
+        setTimeout(() => el.remove(), 300);
+      }
+    }
+  });
 }
 
 async function toggleVisibility(id, btn) {

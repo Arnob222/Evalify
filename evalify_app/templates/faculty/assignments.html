@@ -811,13 +811,19 @@ async function publishAssessment(id, btn) {
 }
 
 // ── Delete ────────────────────────────────────────────────────────────────
-async function deleteAssessment(id) {
-  if (!confirm('Delete this assessment? All submissions will also be removed.')) return;
-  const res  = await fetch(`/faculty/assignments/${id}/delete/`, {
-    method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }
+function deleteAssessment(id) {
+  customConfirm({
+    icon: '🗑️', title: 'Delete Assessment?',
+    message: 'All student submissions will also be permanently removed.',
+    okText: 'Delete', okColor: '#ef4444',
+    onConfirm: async () => {
+      const res  = await fetch(`/faculty/assignments/${id}/delete/`, {
+        method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }
+      });
+      const data = await res.json();
+      if (data.success) document.getElementById(`asgn-${id}`).remove();
+    }
   });
-  const data = await res.json();
-  if (data.success) document.getElementById(`asgn-${id}`).remove();
 }
 
 // ── Edit ──────────────────────────────────────────────────────────────────

@@ -55,7 +55,7 @@
   <div class="panel" style="margin-bottom:20px;">
     <div class="panel-head">
       <div class="panel-title">📈 Class-wide Attainment Averages</div>
-      <span style="font-size:12px;color:var(--gray);">Aggregated from marks sheet across all graded submissions</span>
+      <span style="font-size:12px;color:var(--gray);">% of students present in final who achieved ≥ 60% on each CLO / PLO</span>
     </div>
     {% if clo_attainment_list or plo_attainment_list %}
     <div style="display:flex;gap:24px;flex-wrap:wrap;padding:4px 0;">
@@ -63,7 +63,7 @@
       {% if clo_attainment_list %}
       <div style="flex:1;min-width:220px;">
         <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:10px;
-                    text-transform:uppercase;letter-spacing:.6px;">Average CLO Attainment per CLO</div>
+                    text-transform:uppercase;letter-spacing:.6px;">CLO Attainment (% students achieved ≥ 60%)</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
           <thead>
             <tr style="background:#f3f4f6;">
@@ -103,7 +103,7 @@
       {% if plo_attainment_list %}
       <div style="flex:1;min-width:220px;">
         <div style="font-size:11px;font-weight:700;color:var(--gray);margin-bottom:10px;
-                    text-transform:uppercase;letter-spacing:.6px;">Average PLO Attainment per PLO</div>
+                    text-transform:uppercase;letter-spacing:.6px;">PLO Attainment (% students achieved ≥ 60%)</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
           <thead>
             <tr style="background:#f3f4f6;">
@@ -155,7 +155,7 @@
   <div class="panel" style="margin-bottom:20px;">
     <div class="panel-head">
       <div class="panel-title">🎯 PLO Attainment Chart</div>
-      <span style="font-size:12px;color:var(--gray);">Aggregated across all graded submissions</span>
+      <span style="font-size:12px;color:var(--gray);">% of students present in final who achieved ≥ 60% on each PLO</span>
     </div>
     <div style="position:relative;height:300px;padding-top:8px;">
       <canvas id="ploBarChart"></canvas>
@@ -183,13 +183,13 @@
           </tr>
           <tr style="background:#2d5f8a;color:#fff;font-size:12px;">
             <th style="padding:8px 10px;text-align:left;font-weight:600;">CLO</th>
-            <th style="padding:8px 10px;text-align:center;font-weight:600;">Graded / Enrolled</th>
-            <th style="padding:8px 10px;text-align:center;font-weight:600;">Class Avg %</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:600;">Achieved</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:600;">Attainment %</th>
             <th style="padding:8px 10px;text-align:center;font-weight:600;">Attainment</th>
             <th style="padding:8px 10px;text-align:left;font-weight:600;border-right:3px solid rgba(255,255,255,0.25);">Action Plan</th>
             <th style="padding:8px 10px;text-align:left;font-weight:600;">PLO</th>
-            <th style="padding:8px 10px;text-align:center;font-weight:600;">Graded / Enrolled</th>
-            <th style="padding:8px 10px;text-align:center;font-weight:600;">Class Avg %</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:600;">Achieved</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:600;">Attainment %</th>
             <th style="padding:8px 10px;text-align:center;font-weight:600;">Attainment</th>
             <th style="padding:8px 10px;text-align:left;font-weight:600;">Action Plan</th>
           </tr>
@@ -199,7 +199,7 @@
           <tr style="border-bottom:1px solid #e5e7eb;{% cycle '' 'background:#f9fafb;' %}">
             {% if row.clo %}
             <td style="padding:8px 10px;font-weight:700;color:#1e3a5f;">{{ row.clo.code }}</td>
-            <td style="padding:8px 10px;text-align:center;">{{ row.clo.count }} / {{ row.clo.total }}</td>
+            <td style="padding:8px 10px;text-align:center;">{{ row.clo.achieved }} / {{ row.clo.present }}</td>
             <td style="padding:8px 10px;text-align:center;font-weight:700;">{{ row.clo.pct }}%</td>
             <td style="padding:8px 10px;text-align:center;">
               {% if row.clo.attained %}
@@ -215,7 +215,7 @@
 
             {% if row.plo %}
             <td style="padding:8px 10px;font-weight:700;color:#1e3a5f;">{{ row.plo.code }}</td>
-            <td style="padding:8px 10px;text-align:center;">{{ row.plo.count }} / {{ row.plo.total }}</td>
+            <td style="padding:8px 10px;text-align:center;">{{ row.plo.achieved }} / {{ row.plo.present }}</td>
             <td style="padding:8px 10px;text-align:center;font-weight:700;">{{ row.plo.pct }}%</td>
             <td style="padding:8px 10px;text-align:center;">
               {% if row.plo.attained %}
@@ -235,8 +235,9 @@
           <tr>
             <td colspan="10" style="padding:8px 12px;font-size:11px;color:var(--gray);
                                      border-top:2px solid var(--border);font-style:italic;">
-              * "Class Avg %" = average of all graded students' individual CLO/PLO percentages (from marks sheet).
-              Attainment is "Yes" when the class average ≥ 60%. "Graded / Enrolled" shows how many students were included.
+              * "Achieved" = students who scored ≥ 40% on that CLO/PLO, among students present in the final exam.
+              "Attainment %" = Achieved ÷ Present × 100. Attainment is "Yes" when ≥ 60% of present students achieved the CLO/PLO.
+              Students with no marks entered in the final exam are counted as absent and excluded.
             </td>
           </tr>
         </tfoot>
@@ -298,7 +299,7 @@
                   <td style="padding:6px 8px;font-weight:600;">{{ clo.code }}</td>
                   <td style="padding:6px 8px;text-align:center;font-weight:700;">{{ clo.pct }}%</td>
                   <td style="padding:6px 8px;text-align:center;">
-                    {% if clo.pct >= 60 %}
+                    {% if clo.pct >= 40 %}
                     <span style="background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;">✓ Pass</span>
                     {% else %}
                     <span style="background:#fee2e2;color:#991b1b;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;">✗ Fail</span>
@@ -329,7 +330,7 @@
                   <td style="padding:6px 8px;font-weight:600;">{{ plo.code }}</td>
                   <td style="padding:6px 8px;text-align:center;font-weight:700;">{{ plo.pct }}%</td>
                   <td style="padding:6px 8px;text-align:center;">
-                    {% if plo.pct >= 60 %}
+                    {% if plo.pct >= 40 %}
                     <span style="background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;">✓ Pass</span>
                     {% else %}
                     <span style="background:#fee2e2;color:#991b1b;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;">✗ Fail</span>

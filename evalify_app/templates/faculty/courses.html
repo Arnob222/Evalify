@@ -539,10 +539,16 @@ async function submitClo() {
   }
 }
 
-async function deleteClo(cloId, btn) {
-  if (!confirm('Delete this CLO? This will remove it from all question mappings.')) return;
-  const res = await apiPost(`/faculty/clo/${cloId}/delete/`, {});
-  if (res.success) btn.closest('[style*="background:#f9fafb"]').remove();
+function deleteClo(cloId, btn) {
+  customConfirm({
+    icon: '🗑️', title: 'Delete CLO?',
+    message: 'This will remove it from all question mappings.',
+    okText: 'Delete', okColor: '#ef4444',
+    onConfirm: async () => {
+      const res = await apiPost(`/faculty/clo/${cloId}/delete/`, {});
+      if (res.success) btn.closest('[style*="background:#f9fafb"]').remove();
+    }
+  });
 }
 
 /* ── PLO ── */
@@ -615,20 +621,25 @@ async function submitAddStudent() {
 }
 
 /* ── Remove student ── */
-async function removeStudent(courseId, studentId, btn, rowId) {
-  if (!confirm('Remove this student from the course?')) return;
-  const res = await apiPost(`/faculty/courses/${courseId}/remove-student/${studentId}/`, {});
-  if (res.success) {
-    const rowEl = rowId
-      ? document.getElementById(rowId)
-      : document.getElementById(`srow-${courseId}-${studentId}`);
-    if (rowEl) rowEl.remove();
-    // Also remove from per-course table if triggered from global view
-    const perCourseRow = document.getElementById(`srow-${courseId}-${studentId}`);
-    if (perCourseRow) perCourseRow.remove();
-  } else {
-    alert(res.error || 'Error removing student');
-  }
+function removeStudent(courseId, studentId, btn, rowId) {
+  customConfirm({
+    icon: '👤', title: 'Remove Student?',
+    message: 'The student will lose access to this course and all its assessments.',
+    okText: 'Remove', okColor: '#ef4444',
+    onConfirm: async () => {
+      const res = await apiPost(`/faculty/courses/${courseId}/remove-student/${studentId}/`, {});
+      if (res.success) {
+        const rowEl = rowId
+          ? document.getElementById(rowId)
+          : document.getElementById(`srow-${courseId}-${studentId}`);
+        if (rowEl) rowEl.remove();
+        const perCourseRow = document.getElementById(`srow-${courseId}-${studentId}`);
+        if (perCourseRow) perCourseRow.remove();
+      } else {
+        alert(res.error || 'Error removing student');
+      }
+    }
+  });
 }
 // ── Add by Registration ID Range ──────────────────────────────
 function openRangeModal(courseId) {

@@ -539,11 +539,12 @@ def faculty_analytics(request):
         )
 
         # Build column list exactly like marks sheet:
-        # mid/final → one column per sub-question (with sub-question CLOs/PLOs)
-        # all others → one column per question (with question CLOs/PLOs)
+        # mid/final → one column per sub-question; others → one column per question
+        # is_final flag tracks which columns belong to the final exam
         all_columns = []
         for a in assessments:
             use_subs = a.assessment_type in SUB_TYPES
+            is_final = a.assessment_type == 'final'
             for q in a.questions.all().order_by('order'):
                 subs = list(q.sub_questions.all().order_by('order')) if use_subs else []
                 if use_subs and subs:
@@ -554,6 +555,7 @@ def faculty_analytics(request):
                             'max_marks': sq.max_marks,
                             'clo_ids':   [c.id for c in sq.clos.all()],
                             'plo_ids':   [p.id for p in sq.plos.all()],
+                            'is_final':  is_final,
                         })
                 else:
                     all_columns.append({
@@ -562,6 +564,7 @@ def faculty_analytics(request):
                         'max_marks': q.max_marks,
                         'clo_ids':   [c.id for c in q.clos.all()],
                         'plo_ids':   [p.id for p in q.plos.all()],
+                        'is_final':  is_final,
                     })
 
         clos = list(selected_course.clos.all())
@@ -615,30 +618,50 @@ def faculty_analytics(request):
         )
         total_enrolled = len(students)
 
-        clo_pct_sums = {clo.id: {'sum': 0.0, 'count': 0} for clo in clos}
-        plo_pct_sums = {p.id: {'sum': 0.0, 'count': 0, 'plo': p} for p in plos}
+        # Determine present students: those with ANY grade record in the final exam.
+        # If no final exam exists, fall back to anyone with any grades.
+        has_final_cols = any(col['is_final'] for col in all_columns)
+        present_student_ids = set()
+        for student in students:
+            sq_m = sq_grade_map.get(student.id, {})
+            q_m  = q_grade_map.get(student.id, {})
+            if has_final_cols:
+                is_present = any(
+                    col['entity_id'] in (sq_m if col['is_sub'] else q_m)
+                    for col in all_columns if col['is_final']
+                )
+            else:
+                is_present = bool(sq_m or q_m)
+            if is_present:
+                present_student_ids.add(student.id)
+        present_count = len(present_student_ids)
+
+        # Per-CLO/PLO: count all graded students who achieved >= 40% on that CLO/PLO
+        clo_achieved = {clo.id: 0 for clo in clos}
+        plo_achieved = {p.id: 0 for p in plos}
+        graded_count = 0
 
         for student in students:
             sq_m = sq_grade_map.get(student.id, {})
             q_m  = q_grade_map.get(student.id, {})
             if not sq_m and not q_m:
-                continue  # never graded — skip
+                continue
 
-            # Grade distribution — bucket this student's overall %
+            graded_count += 1
+
+            def _mark(col):
+                return sq_m.get(col['entity_id'], 0) if col['is_sub'] else q_m.get(col['entity_id'], 0)
+
+            # Grade distribution — all students who have any grades
             if total_max_overall > 0:
-                total_raw_student = sum(
-                    sq_m.get(col['entity_id'], 0) if col['is_sub'] else q_m.get(col['entity_id'], 0)
-                    for col in all_columns
-                )
+                total_raw_student = sum(_mark(col) for col in all_columns)
                 student_pct = total_raw_student / total_max_overall * 100
                 for lbl, lo, hi in GRADE_SCALE:
                     if lo <= student_pct < hi:
                         grade_buckets[lbl] += 1
                         break
 
-            def _mark(col):
-                return sq_m.get(col['entity_id'], 0) if col['is_sub'] else q_m.get(col['entity_id'], 0)
-
+            # Per-student CLO/PLO percentages — same rounded pct for display AND counting
             clo_data = []
             for clo in clos:
                 mx = clo_max[clo.id]
@@ -647,9 +670,8 @@ def faculty_analytics(request):
                 raw = sum(_mark(col) for col in all_columns if clo.id in col['clo_ids'])
                 pct = round(raw / mx * 100, 1)
                 clo_data.append({'code': clo.code, 'pct': pct})
-                clo_pct_sums[clo.id]['sum']   += pct
-                clo_pct_sums[clo.id]['count'] += 1
-
+                if pct >= 40:
+                    clo_achieved[clo.id] += 1
             plo_data = []
             for p in plos:
                 mx = plo_max[p.id]
@@ -658,9 +680,8 @@ def faculty_analytics(request):
                 raw = sum(_mark(col) for col in all_columns if p.id in col['plo_ids'])
                 pct = round(raw / mx * 100, 1)
                 plo_data.append({'code': p.code, 'pct': pct})
-                plo_pct_sums[p.id]['sum']   += pct
-                plo_pct_sums[p.id]['count'] += 1
-
+                if pct >= 40:
+                    plo_achieved[p.id] += 1
             overall_pcts = [d['pct'] for d in clo_data]
             overall = round(sum(overall_pcts) / len(overall_pcts), 1) if overall_pcts else 0.0
             student_details.append({
@@ -670,39 +691,41 @@ def faculty_analytics(request):
                 'overall':  overall,
             })
 
-        # Build grade_dist list for chart (preserve GRADE_SCALE order)
+        # Grade distribution chart data
         grade_dist = [{'label': lbl, 'count': grade_buckets[lbl]} for lbl, _, _ in GRADE_SCALE]
 
-        # Class-wide CLO attainment — average of per-student CLO %
+        # CLO attainment: achieved = all graded students ≥40%; % uses present_count as denominator
         for clo in clos:
-            d = clo_pct_sums[clo.id]
-            avg = round(d['sum'] / d['count'], 1) if d['count'] > 0 else 0.0
-            clo_attainment.append({'code': clo.code, 'attainment': avg})
+            achieved = clo_achieved[clo.id]
+            pct = round(achieved / present_count * 100, 1) if present_count > 0 else 0.0
+            clo_attainment.append({'code': clo.code, 'attainment': pct,
+                                   'achieved': achieved, 'present': present_count})
 
-        # Class-wide PLO attainment
+        # PLO attainment
         for p in plos:
-            d = plo_pct_sums[p.id]
-            avg = round(d['sum'] / d['count'], 1) if d['count'] > 0 else 0.0
-            plo_attainment.append({'code': p.code, 'description': p.description, 'attainment': avg})
+            achieved = plo_achieved[p.id]
+            pct = round(achieved / present_count * 100, 1) if present_count > 0 else 0.0
+            plo_attainment.append({'code': p.code, 'description': p.description,
+                                   'attainment': pct, 'achieved': achieved, 'present': present_count})
 
-        # eSCAR — same averages, attained if class avg >= 60%
+        # eSCAR
         for clo in clos:
-            d = clo_pct_sums[clo.id]
-            avg = round(d['sum'] / d['count'], 1) if d['count'] > 0 else 0.0
-            attained = avg >= 60
+            achieved = clo_achieved[clo.id]
+            pct = round(achieved / present_count * 100, 1) if present_count > 0 else 0.0
+            attained = pct >= 60
             action = ('CLO attained. Maintain current teaching strategies.' if attained
                       else 'CLO not attained. Review teaching methods and provide additional practice.')
-            escar_clos.append({'code': clo.code, 'count': d['count'], 'total': total_enrolled,
-                               'pct': avg, 'attained': attained, 'action': action})
+            escar_clos.append({'code': clo.code, 'achieved': achieved, 'present': present_count,
+                               'pct': pct, 'attained': attained, 'action': action})
 
         for p in plos:
-            d = plo_pct_sums[p.id]
-            avg = round(d['sum'] / d['count'], 1) if d['count'] > 0 else 0.0
-            attained = avg >= 60
+            achieved = plo_achieved[p.id]
+            pct = round(achieved / present_count * 100, 1) if present_count > 0 else 0.0
+            attained = pct >= 60
             action = ('PLO attained. Continue current curriculum alignment.' if attained
                       else 'PLO not attained. Strengthen curriculum alignment and CLO coverage.')
-            escar_plos.append({'code': p.code, 'count': d['count'], 'total': total_enrolled,
-                               'pct': avg, 'attained': attained, 'action': action})
+            escar_plos.append({'code': p.code, 'achieved': achieved, 'present': present_count,
+                               'pct': pct, 'attained': attained, 'action': action})
 
         escar_rows = [
             {'clo': escar_clos[i] if i < len(escar_clos) else None,
@@ -1036,22 +1059,88 @@ def submit_assessment(request, assessment_id):
 def student_clo_results(request):
     enrollments = Enrollment.objects.filter(student=request.user).select_related('course')
     results = []
+    SUB_TYPES = {'mid', 'final'}
+
     for e in enrollments:
         course = e.course
-        assessments = Assessment.objects.filter(course=course, status='published')
-        subs = Submission.objects.filter(
-            student=request.user, assessment__in=assessments,
-            status__in=['graded', 'flagged']
-        )
-        avg_pct = 0
-        if subs.exists():
-            total = sum(
-                (s.total_score / s.assessment.total_marks * 100)
-                for s in subs if s.assessment.total_marks > 0
+        assessments = list(
+            Assessment.objects.filter(course=course, status='published')
+            .prefetch_related(
+                'questions__clos', 'questions__plos',
+                'questions__sub_questions__clos', 'questions__sub_questions__plos',
             )
-            avg_pct = round(total / subs.count(), 1)
+            .order_by('assessment_type', 'created_at')
+        )
+
+        # Build columns exactly like faculty analytics
+        all_columns = []
+        for a in assessments:
+            use_subs = a.assessment_type in SUB_TYPES
+            for q in a.questions.all().order_by('order'):
+                subs = list(q.sub_questions.all().order_by('order')) if use_subs else []
+                if use_subs and subs:
+                    for sq in subs:
+                        all_columns.append({
+                            'is_sub':    True,
+                            'entity_id': sq.id,
+                            'max_marks': sq.max_marks,
+                            'clo_ids':   [c.id for c in sq.clos.all()],
+                            'plo_ids':   [p.id for p in sq.plos.all()],
+                        })
+                else:
+                    all_columns.append({
+                        'is_sub':    False,
+                        'entity_id': q.id,
+                        'max_marks': q.max_marks,
+                        'clo_ids':   [c.id for c in q.clos.all()],
+                        'plo_ids':   [p.id for p in q.plos.all()],
+                    })
+
+        clos = list(course.clos.all())
+        clo_max = {
+            clo.id: sum(col['max_marks'] for col in all_columns if clo.id in col['clo_ids'])
+            for clo in clos
+        }
+        plo_ids_used = set()
+        for col in all_columns:
+            plo_ids_used.update(col['plo_ids'])
+        plos = list(PLO.objects.filter(id__in=plo_ids_used))
+        plo_max = {
+            p.id: sum(col['max_marks'] for col in all_columns if p.id in col['plo_ids'])
+            for p in plos
+        }
+        total_max_overall = sum(col['max_marks'] for col in all_columns)
+
+        # Fetch this student's grades in two bulk queries
+        q_ids  = [col['entity_id'] for col in all_columns if not col['is_sub']]
+        sq_ids = [col['entity_id'] for col in all_columns if col['is_sub']]
+        q_m, sq_m = {}, {}
+        if q_ids:
+            for g in QuestionGrade.objects.filter(
+                question_id__in=q_ids,
+                submission__assessment__course=course,
+                submission__student=request.user,
+            ):
+                q_m[g.question_id] = g.marks_obtained
+        if sq_ids:
+            for g in SubQuestionGrade.objects.filter(
+                sub_question_id__in=sq_ids,
+                submission__assessment__course=course,
+                submission__student=request.user,
+            ):
+                sq_m[g.sub_question_id] = g.marks_obtained
+
+        def _mark(col):
+            return sq_m.get(col['entity_id'], 0) if col['is_sub'] else q_m.get(col['entity_id'], 0)
+
+        has_grades = bool(q_m or sq_m)
+
+        # Overall percentage using same denominator as faculty
+        total_raw = sum(_mark(col) for col in all_columns)
+        avg_pct = round(total_raw / total_max_overall * 100, 1) if (total_max_overall > 0 and has_grades) else 0.0
+
         grade = 'F'
-        if avg_pct >= 80: grade = 'A+'
+        if avg_pct >= 80:   grade = 'A+'
         elif avg_pct >= 75: grade = 'A'
         elif avg_pct >= 70: grade = 'A-'
         elif avg_pct >= 65: grade = 'B+'
@@ -1061,38 +1150,41 @@ def student_clo_results(request):
         elif avg_pct >= 45: grade = 'C'
         elif avg_pct >= 40: grade = 'D'
 
+        # CLO attainment — same formula as faculty per-student calculation
         clo_results = []
-        plo_agg = defaultdict(lambda: {'obtained': 0.0, 'total': 0.0, 'plo': None})
-        for clo in course.clos.all():
-            q_ids = list(Question.objects.filter(assessment__in=assessments, clos=clo).values_list('id', flat=True))
-            qgs = QuestionGrade.objects.filter(question_id__in=q_ids, submission__in=subs)
-            total_possible = sum(Question.objects.get(id=qid).max_marks for qid in q_ids)
-            total_obtained = sum(g.marks_obtained for g in qgs)
-            attainment = round((total_obtained / total_possible * 100) if total_possible > 0 else 0, 1)
+        for clo in clos:
+            mx = clo_max[clo.id]
+            raw = sum(_mark(col) for col in all_columns if clo.id in col['clo_ids'])
+            att = round(raw / mx * 100, 1) if mx > 0 else 0.0
             clo_results.append({
                 'code': clo.code, 'bloom': clo.bloom_level,
                 'description': clo.description,
-                'obtained': int(total_obtained), 'total': int(total_possible),
-                'attainment': attainment
+                'obtained': round(raw, 1), 'total': mx,
+                'attainment': att,
             })
-            for plo in clo.plos.all():
-                if plo_agg[plo.id]['plo'] is None:
-                    plo_agg[plo.id]['plo'] = plo
-                plo_agg[plo.id]['obtained'] += total_obtained
-                plo_agg[plo.id]['total'] += total_possible
 
+        # PLO attainment
         plo_results = []
-        for pid, data in plo_agg.items():
-            plo = data['plo']
-            att = round((data['obtained'] / data['total'] * 100) if data['total'] > 0 else 0, 1)
-            plo_results.append({'code': plo.code, 'description': plo.description, 'attainment': att})
+        for p in plos:
+            mx = plo_max[p.id]
+            if mx == 0:
+                continue
+            raw = sum(_mark(col) for col in all_columns if p.id in col['plo_ids'])
+            att = round(raw / mx * 100, 1)
+            plo_results.append({'code': p.code, 'description': p.description, 'attainment': att})
+
+        graded_count = Submission.objects.filter(
+            student=request.user, assessment__in=assessments,
+            status__in=['graded', 'flagged'],
+        ).count()
 
         results.append({
             'course': course, 'grade': grade,
-            'avg_pct': avg_pct, 'graded_count': subs.count(),
+            'avg_pct': avg_pct, 'graded_count': graded_count,
             'clo_results': clo_results,
             'plo_results': plo_results,
         })
+
     return render(request, 'student/clo_results.html', {'results': results})
 
 

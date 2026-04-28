@@ -396,17 +396,23 @@ async function toggleVisibility(id, btn) {
 }
 
 /* ── Delete ── */
-async function deleteMaterial(id) {
-  if (!confirm('Remove this material? Students will no longer be able to access it.')) return;
-  const res  = await fetch(`/faculty/materials/${id}/delete/`, {
-    method: 'DELETE', headers: {'X-CSRFToken': getCsrf()},
+function deleteMaterial(id) {
+  customConfirm({
+    icon: '📄', title: 'Remove Material?',
+    message: 'Students will no longer be able to access this file.',
+    okText: 'Remove', okColor: '#ef4444',
+    onConfirm: async () => {
+      const res  = await fetch(`/faculty/materials/${id}/delete/`, {
+        method: 'DELETE', headers: {'X-CSRFToken': getCsrf()},
+      });
+      const data = await res.json();
+      if (data.success) {
+        const el = document.getElementById(`mat-${id}`);
+        el.style.opacity = '0'; el.style.transition = 'opacity .3s';
+        setTimeout(() => el.remove(), 300);
+      }
+    }
   });
-  const data = await res.json();
-  if (data.success) {
-    const el = document.getElementById(`mat-${id}`);
-    el.style.opacity = '0'; el.style.transition = 'opacity .3s';
-    setTimeout(() => el.remove(), 300);
-  }
 }
 
 /* ── Video preview modal ── */

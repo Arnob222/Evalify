@@ -162,12 +162,18 @@ document.getElementById('enrollCodeInput').addEventListener('keydown', function(
 });
 
 function confirmLeave(courseId, courseName) {
-  if (!confirm(`Leave "${courseName}"?\n\nYou will lose access to all its assignments and materials. You can re-join later with the enrollment code.`)) return;
-  apiPost(`/student/courses/${courseId}/unenroll/`, {})
-    .then(res => {
-      if (res.success) location.reload();
-      else alert(res.error || 'Something went wrong.');
-    });
+  customConfirm({
+    icon: '🚪', title: `Leave Course?`,
+    message: `You will lose access to all assignments and materials in "${courseName}". You can re-join later with the enrollment code.`,
+    okText: 'Leave', okColor: '#ef4444',
+    onConfirm: () => {
+      apiPost(`/student/courses/${courseId}/unenroll/`, {})
+        .then(res => {
+          if (res.success) location.reload();
+          else alert(res.error || 'Something went wrong.');
+        });
+    }
+  });
 }
 
 async function joinCourse() {

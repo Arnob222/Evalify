@@ -117,12 +117,16 @@ async function submitAnn() {
   }
 }
 
-async function deleteAnn(id) {
-  if (!confirm('Delete this announcement?')) return;
-  const res = await apiPost(`/faculty/announcements/${id}/delete/`, {});
-  if (res.success) {
-    document.getElementById(`ann${id}`).remove();
-  }
+function deleteAnn(id) {
+  customConfirm({
+    icon: '📢', title: 'Delete Announcement?',
+    message: 'Students will no longer see this announcement.',
+    okText: 'Delete', okColor: '#ef4444',
+    onConfirm: async () => {
+      const res = await apiPost(`/faculty/announcements/${id}/delete/`, {});
+      if (res.success) document.getElementById(`ann${id}`).remove();
+    }
+  });
 }
 </script>
 {% endblock %}

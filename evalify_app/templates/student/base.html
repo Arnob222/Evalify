@@ -149,6 +149,38 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
   {% block content %}{% endblock %}
 </main>
 
+<!-- ── Custom Confirm Dialog ── -->
+<div id="confirmOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;
+     display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px);">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:400px;
+              box-shadow:0 20px 60px rgba(0,0,0,.2);animation:confirmPop .18s ease;">
+    <div style="padding:28px 28px 0;text-align:center;">
+      <div id="confirmIcon" style="font-size:40px;margin-bottom:12px;"></div>
+      <div id="confirmTitle" style="font-size:17px;font-weight:700;color:#111827;margin-bottom:8px;"></div>
+      <div id="confirmMsg" style="font-size:14px;color:#6b7280;line-height:1.55;"></div>
+    </div>
+    <div style="display:flex;gap:10px;padding:24px 28px;">
+      <button id="confirmCancel"
+              style="flex:1;padding:10px;border-radius:9px;border:1px solid #e5e7eb;
+                     background:#f9fafb;font-size:14px;font-weight:600;cursor:pointer;
+                     color:#374151;font-family:'Inter',sans-serif;transition:background .15s;"
+              onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='#f9fafb'">
+        Cancel
+      </button>
+      <button id="confirmOk"
+              style="flex:1;padding:10px;border-radius:9px;border:none;
+                     font-size:14px;font-weight:600;cursor:pointer;color:#fff;
+                     font-family:'Inter',sans-serif;transition:opacity .15s;"
+              onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        Confirm
+      </button>
+    </div>
+  </div>
+</div>
+<style>
+@keyframes confirmPop{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
+</style>
+
 <script>
 async function refreshBadge() {
   try {
@@ -174,6 +206,19 @@ async function apiPost(url,data){const res=await fetch(url,{method:'POST',header
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay'))e.target.classList.remove('open');});
+function customConfirm({title='Are you sure?',message='',icon='🗑️',okText='Delete',okColor='#ef4444',onConfirm}){
+  const overlay=document.getElementById('confirmOverlay');
+  document.getElementById('confirmIcon').textContent=icon;
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmMsg').textContent=message;
+  const okBtn=document.getElementById('confirmOk');
+  okBtn.textContent=okText; okBtn.style.background=okColor;
+  overlay.style.display='flex';
+  const close=()=>{overlay.style.display='none';};
+  document.getElementById('confirmCancel').onclick=close;
+  overlay.onclick=e=>{if(e.target===overlay)close();};
+  okBtn.onclick=()=>{close();onConfirm();};
+}
 </script>
 {% block scripts %}{% endblock %}
 </body>
