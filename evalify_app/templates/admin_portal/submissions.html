@@ -1,0 +1,94 @@
+{% extends 'admin_portal/base.html' %}
+{% block nav_submissions %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Submissions</div>
+    <div class="page-sub">All student submissions across all assessments</div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <div class="search-box" style="flex:1;max-width:300px;">
+    <span class="search-icon">🔍</span>
+    <input type="text" class="form-control" id="searchInput" placeholder="Search student or assessment…" oninput="filterTable()">
+  </div>
+  <select class="form-control" id="statusFilter" style="width:140px;" onchange="filterTable()">
+    <option value="">All Status</option>
+    <option value="submitted">Submitted</option>
+    <option value="graded">Graded</option>
+    <option value="flagged">Flagged</option>
+  </select>
+  <span style="font-size:13px;color:var(--gray);margin-left:4px;">{{ submissions|length }} total</span>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table id="subsTable">
+      <thead>
+        <tr>
+          <th>Student</th>
+          <th>Assessment</th>
+          <th>Course</th>
+          <th>Score</th>
+          <th>Status</th>
+          <th>Late?</th>
+          <th>Submitted</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in submissions %}
+        <tr data-name="{{ s.student.full_name|lower }} {{ s.assessment.title|lower }}" data-status="{{ s.status }}">
+          <td>
+            <div style="font-weight:600;">{{ s.student.full_name|default:s.student.username }}</div>
+            <div style="font-size:11px;color:var(--gray);">{{ s.student.email }}</div>
+          </td>
+          <td style="font-size:13px;">{{ s.assessment.title }}</td>
+          <td><span style="font-weight:600;color:var(--teal);">{{ s.assessment.course.code }}</span></td>
+          <td>
+            {% if s.status == 'graded' or s.status == 'flagged' %}
+            <span style="font-weight:700;">{{ s.final_score|floatformat:1 }}</span>
+            <span style="font-size:11px;color:var(--gray);">/ {{ s.assessment.total_marks }}</span>
+            {% else %}
+            <span style="color:var(--light);">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge {% if s.status == 'graded' %}badge-green{% elif s.status == 'flagged' %}badge-red{% else %}badge-orange{% endif %}">
+              {{ s.status }}
+            </span>
+          </td>
+          <td>
+            {% if s.is_late %}
+            <span class="badge badge-red">Late</span>
+            {% else %}
+            <span style="color:var(--light);font-size:12px;">On time</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--gray);">{{ s.submitted_at|date:"M d, Y H:i" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">
+          <div class="empty-state"><div class="empty-icon">📨</div><div class="empty-title">No submissions yet</div></div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterTable() {
+  const q  = document.getElementById('searchInput').value.toLowerCase();
+  const st = document.getElementById('statusFilter').value;
+  document.querySelectorAll('#subsTable tbody tr').forEach(row => {
+    const name = row.dataset.name   || '';
+    const stat = row.dataset.status || '';
+    row.style.display = ((!q||name.includes(q)) && (!st||stat===st)) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

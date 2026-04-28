@@ -1,0 +1,139 @@
+{% extends 'admin_portal/base.html' %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Admin Dashboard</div>
+    <div class="page-sub">System-wide overview — {{ today }}</div>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Total Users</div>
+      <div class="stat-val">{{ total_users }}</div>
+      <div class="stat-sub">{{ total_faculty }} faculty · {{ total_students }} students</div>
+    </div>
+    <div class="stat-icon-wrap si-blue">👥</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Total Courses</div>
+      <div class="stat-val">{{ total_courses }}</div>
+      <div class="stat-sub">{{ total_enrollments }} enrollments</div>
+    </div>
+    <div class="stat-icon-wrap si-teal">📚</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Assessments</div>
+      <div class="stat-val">{{ total_assessments }}</div>
+      <div class="stat-sub">{{ published_assessments }} published</div>
+    </div>
+    <div class="stat-icon-wrap si-orange">📝</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Submissions</div>
+      <div class="stat-val">{{ total_submissions }}</div>
+      <div class="stat-sub">{{ pending_submissions }} pending grading</div>
+    </div>
+    <div class="stat-icon-wrap si-green">📨</div>
+  </div>
+</div>
+
+<div class="two-col" style="margin-bottom:24px;">
+  <!-- Recent Users -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">Recent Users</span>
+      <a href="{% url 'admin_users' %}" class="btn btn-outline btn-sm">View All</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Joined</th></tr></thead>
+        <tbody>
+          {% for u in recent_users %}
+          <tr>
+            <td>
+              <div style="font-weight:600;">{{ u.full_name|default:u.username }}</div>
+              <div style="font-size:11px;color:var(--gray);">{{ u.email }}</div>
+            </td>
+            <td>
+              <span class="badge {% if u.role == 'faculty' %}badge-teal{% elif u.role == 'student' %}badge-blue{% else %}badge-red{% endif %}">
+                {{ u.role }}
+              </span>
+            </td>
+            <td style="color:var(--gray);font-size:12px;">{{ u.date_joined|date:"M d, Y" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" style="text-align:center;color:var(--gray);padding:24px;">No users yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recent Courses -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">Recent Courses</span>
+      <a href="{% url 'admin_courses' %}" class="btn btn-outline btn-sm">View All</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Course</th><th>Faculty</th><th>Students</th></tr></thead>
+        <tbody>
+          {% for c in recent_courses %}
+          <tr>
+            <td>
+              <div style="font-weight:600;">{{ c.code }}</div>
+              <div style="font-size:11px;color:var(--gray);">{{ c.name }}</div>
+            </td>
+            <td style="font-size:12px;">{{ c.faculty.full_name|default:c.faculty.username }}</td>
+            <td>
+              <span class="badge badge-gray">{{ c.enrollments.count }}</span>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" style="text-align:center;color:var(--gray);padding:24px;">No courses yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Submissions -->
+<div class="panel">
+  <div class="panel-head">
+    <span class="panel-title">Recent Submissions</span>
+    <a href="{% url 'admin_submissions' %}" class="btn btn-outline btn-sm">View All</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Student</th><th>Assessment</th><th>Course</th><th>Status</th><th>Submitted</th></tr></thead>
+      <tbody>
+        {% for s in recent_submissions %}
+        <tr>
+          <td style="font-weight:500;">{{ s.student.full_name|default:s.student.username }}</td>
+          <td style="font-size:12px;">{{ s.assessment.title }}</td>
+          <td style="font-size:12px;color:var(--gray);">{{ s.assessment.course.code }}</td>
+          <td>
+            <span class="badge {% if s.status == 'graded' %}badge-green{% elif s.status == 'flagged' %}badge-red{% else %}badge-orange{% endif %}">
+              {{ s.status }}
+            </span>
+          </td>
+          <td style="font-size:12px;color:var(--gray);">{{ s.submitted_at|date:"M d, Y" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" style="text-align:center;color:var(--gray);padding:24px;">No submissions yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

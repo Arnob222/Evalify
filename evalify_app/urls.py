@@ -80,4 +80,26 @@ urlpatterns = [
     path('student/question-bank/<int:paper_id>/',                            views.student_view_paper,     name='student_view_paper'),
     path('student/question-bank/course/<int:course_id>/',                    views.student_qbank_course,   name='student_qbank_course'),
     path('student/question-bank/course/<int:course_id>/<str:atype>/',        views.student_qbank_type,     name='student_qbank_type'),
+
+
+
+# Admin Portal
+    path('admin-portal/', views.admin_dashboard, name='admin_dashboard'),
+    path('admin-portal/users/', views.admin_users, name='admin_users'),
+    path('admin-portal/users/create/', views.admin_create_user, name='admin_create_user'),
+    path('admin-portal/users/<int:user_id>/edit/', views.admin_edit_user, name='admin_edit_user'),
+    path('admin-portal/users/<int:user_id>/toggle/', views.admin_toggle_user, name='admin_toggle_user'),
+    path('admin-portal/users/<int:user_id>/delete/', views.admin_delete_user, name='admin_delete_user'),
+    path('admin-portal/courses/', views.admin_courses, name='admin_courses'),
+    path('admin-portal/courses/<int:course_id>/delete/', views.admin_delete_course, name='admin_delete_course'),
+    path('admin-portal/assessments/', views.admin_assessments, name='admin_assessments'),
+    path('admin-portal/assessments/<int:assessment_id>/delete/', views.admin_delete_assessment, name='admin_delete_assessment'),
+    path('admin-portal/submissions/', views.admin_submissions, name='admin_submissions'),
+    path('admin-portal/announcements/', views.admin_announcements, name='admin_announcements'),
+    path('admin-portal/announcements/<int:ann_id>/delete/', views.admin_delete_announcement, name='admin_delete_announcement'),
+    path('admin-portal/materials/', views.admin_materials, name='admin_materials'),
+    path('admin-portal/materials/<int:material_id>/delete/', views.admin_delete_material, name='admin_delete_material'),
+
+
+
 ]
