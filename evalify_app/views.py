@@ -26,7 +26,7 @@ def home(request):
     elif request.user.role == 'student':
         return redirect('student_dashboard')
     elif request.user.role == 'admin':
-        return redirect('faculty_dashboard')
+        return redirect('admin_dashboard')
     return render(request, 'homepage.html')
 
 
@@ -73,8 +73,8 @@ def sign_up_html(request):
             # Must be digits@uap-bd.edu
             if not re.match(r'^\d+@uap-bd\.edu$', email):
                 return render(request, 'sign_up.html', {'error': 'Student email must be digits@uap-bd.edu (e.g., 20241001@uap-bd.edu).'})
-        elif role == 'faculty':
-            # Must be name (letters/dots/underscores)@uap-bd.edu
+        elif role in ('faculty', 'admin'):
+            # Must be name (letters/dots/underscores)@uap-bd.edu or admin@uap-bd.edu
             if not re.match(r'^[A-Za-z][A-Za-z0-9._]*@uap-bd\.edu$', email):
                 return render(request, 'sign_up.html', {'error': 'Faculty email must be name@uap-bd.edu (e.g., john.doe@uap-bd.edu).'})
         else:
@@ -2255,3 +2255,180 @@ def student_qbank_type(request, course_id, atype):
         'type_label': type_label,
         'entries':    entries,
     })
+
+# ADMIN PORTAL VIEWS
+
+def admin_required(view_func):
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('sign_in_html')
+        if request.user.role != 'admin' and not request.user.is_superuser:
+            return redirect('home')
+        return view_func(request, *args, **kwargs)
+    wrapper.__name__ = view_func.__name__
+    return wrapper
+
+
+@admin_required
+def admin_dashboard(request):
+    from datetime import date as dt_date
+    return render(request, 'admin_portal/dashboard.html', {
+        'today':                dt_date.today().strftime('%B %d, %Y'),
+        'total_users':          User.objects.count(),
+        'total_faculty':        User.objects.filter(role='faculty').count(),
+        'total_students':       User.objects.filter(role='student').count(),
+        'total_courses':        Course.objects.count(),
+        'total_enrollments':    Enrollment.objects.count(),
+        'total_assessments':    Assessment.objects.count(),
+        'published_assessments':Assessment.objects.filter(status='published').count(),
+        'total_submissions':    Submission.objects.count(),
+        'pending_submissions':  Submission.objects.filter(status='submitted').count(),
+        'recent_users':         User.objects.order_by('-date_joined')[:6],
+        'recent_courses':       Course.objects.prefetch_related('enrollments').order_by('-created_at')[:6],
+        'recent_submissions':   Submission.objects.select_related('student', 'assessment__course').order_by('-submitted_at')[:8],
+    })
+
+
+@admin_required
+def admin_users(request):
+    users = User.objects.all().order_by('-date_joined')
+    return render(request, 'admin_portal/users.html', {'users': users})
+
+
+@admin_required
+def admin_create_user(request):
+    if request.method == 'POST':
+        full_name = request.POST.get('full_name', '').strip()
+        email     = request.POST.get('email', '').strip()
+        password  = request.POST.get('password', '')
+        role      = request.POST.get('role', 'student')
+        if User.objects.filter(email=email).exists():
+            messages.error(request, 'Email already registered.')
+            return redirect('admin_users')
+        if len(password) < 8:
+            messages.error(request, 'Password must be at least 8 characters.')
+            return redirect('admin_users')
+        username = email.split('@')[0]
+        base = username; i = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base}{i}"; i += 1
+        user = User.objects.create_user(
+            username=username, email=email, password=password,
+            full_name=full_name, role=role,
+        )
+        if role == 'admin':
+            user.is_staff = True
+            user.save()
+        messages.success(request, f'User {full_name} created successfully.')
+    return redirect('admin_users')
+
+
+@admin_required
+def admin_edit_user(request, user_id):
+    u = get_object_or_404(User, id=user_id)
+    if request.method == 'POST':
+        u.full_name = request.POST.get('full_name', u.full_name).strip()
+        u.email     = request.POST.get('email', u.email).strip()
+        u.role      = request.POST.get('role', u.role)
+        pw = request.POST.get('password', '').strip()
+        if pw:
+            if len(pw) < 8:
+                messages.error(request, 'Password must be at least 8 characters.')
+                return redirect('admin_users')
+            u.set_password(pw)
+        u.is_staff = (u.role == 'admin')
+        u.save()
+        messages.success(request, f'User {u.full_name} updated.')
+    return redirect('admin_users')
+
+
+@admin_required
+def admin_toggle_user(request, user_id):
+    if request.method == 'POST':
+        u = get_object_or_404(User, id=user_id)
+        u.is_active = not u.is_active
+        u.save()
+        status = 'activated' if u.is_active else 'deactivated'
+        messages.success(request, f'User {u.full_name or u.username} {status}.')
+    return redirect('admin_users')
+
+
+@admin_required
+def admin_delete_user(request, user_id):
+    if request.method == 'POST':
+        u = get_object_or_404(User, id=user_id)
+        name = u.full_name or u.username
+        u.delete()
+        messages.success(request, f'User {name} deleted.')
+    return redirect('admin_users')
+
+
+@admin_required
+def admin_courses(request):
+    courses = Course.objects.select_related('faculty').prefetch_related('enrollments', 'assessments').order_by('-created_at')
+    semesters = Course.objects.values_list('semester', flat=True).distinct().order_by('semester')
+    return render(request, 'admin_portal/courses.html', {
+        'courses': courses, 'semesters': semesters,
+    })
+
+
+@admin_required
+def admin_delete_course(request, course_id):
+    if request.method == 'POST':
+        c = get_object_or_404(Course, id=course_id)
+        name = c.code
+        c.delete()
+        messages.success(request, f'Course {name} deleted.')
+    return redirect('admin_courses')
+
+
+@admin_required
+def admin_assessments(request):
+    assessments = Assessment.objects.select_related('course__faculty').prefetch_related('submissions').order_by('-created_at')
+    return render(request, 'admin_portal/assessments.html', {'assessments': assessments})
+
+
+@admin_required
+def admin_delete_assessment(request, assessment_id):
+    if request.method == 'POST':
+        a = get_object_or_404(Assessment, id=assessment_id)
+        title = a.title
+        a.delete()
+        messages.success(request, f'Assessment "{title}" deleted.')
+    return redirect('admin_assessments')
+
+
+@admin_required
+def admin_submissions(request):
+    submissions = Submission.objects.select_related('student', 'assessment__course').order_by('-submitted_at')
+    return render(request, 'admin_portal/submissions.html', {'submissions': submissions})
+
+
+@admin_required
+def admin_announcements(request):
+    announcements = Announcement.objects.select_related('course', 'created_by').order_by('-created_at')
+    return render(request, 'admin_portal/announcements.html', {'announcements': announcements})
+
+
+@admin_required
+def admin_delete_announcement(request, ann_id):
+    if request.method == 'POST':
+        a = get_object_or_404(Announcement, id=ann_id)
+        a.delete()
+        messages.success(request, 'Announcement deleted.')
+    return redirect('admin_announcements')
+
+
+@admin_required
+def admin_materials(request):
+    materials = StudyMaterial.objects.select_related('course', 'uploaded_by').order_by('-uploaded_at')
+    return render(request, 'admin_portal/materials.html', {'materials': materials})
+
+
+@admin_required
+def admin_delete_material(request, material_id):
+    if request.method == 'POST':
+        m = get_object_or_404(StudyMaterial, id=material_id)
+        m.delete()
+        messages.success(request, 'Material deleted.')
+    return redirect('admin_materials')

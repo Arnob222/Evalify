@@ -1,0 +1,49 @@
+{% extends 'admin_portal/base.html' %}
+{% block nav_announcements %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Announcements</div>
+    <div class="page-sub">All course announcements</div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Title</th><th>Course</th><th>Priority</th><th>Created By</th><th>Date</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for a in announcements %}
+        <tr>
+          <td>
+            <div style="font-weight:600;">{{ a.title }}</div>
+            <div style="font-size:11px;color:var(--gray);">{{ a.content|truncatechars:60 }}</div>
+          </td>
+          <td><span style="font-weight:600;color:var(--teal);">{{ a.course.code }}</span></td>
+          <td>
+            <span class="badge {% if a.priority == 'high' %}badge-red{% elif a.priority == 'medium' %}badge-orange{% else %}badge-green{% endif %}">
+              {{ a.priority }}
+            </span>
+          </td>
+          <td style="font-size:12px;">{{ a.created_by.full_name|default:a.created_by.username }}</td>
+          <td style="font-size:12px;color:var(--gray);">{{ a.created_at|date:"M d, Y" }}</td>
+          <td>
+            <form method="post" action="{% url 'admin_delete_announcement' a.id %}" onsubmit="return confirm('Delete this announcement?')">
+              {% csrf_token %}
+              <button type="submit" class="btn-ghost btn-sm btn">🗑</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">
+          <div class="empty-state"><div class="empty-icon">📣</div><div class="empty-title">No announcements</div></div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

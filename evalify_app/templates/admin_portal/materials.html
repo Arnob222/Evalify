@@ -1,0 +1,52 @@
+{% extends 'admin_portal/base.html' %}
+{% block nav_materials %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Study Materials</div>
+    <div class="page-sub">All uploaded materials across all courses</div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Title</th><th>Course</th><th>Type</th><th>Uploaded By</th><th>Visible</th><th>Date</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for m in materials %}
+        <tr>
+          <td>
+            <div style="font-weight:600;">{{ m.title }}</div>
+            {% if m.description %}<div style="font-size:11px;color:var(--gray);">{{ m.description|truncatechars:50 }}</div>{% endif %}
+          </td>
+          <td><span style="font-weight:600;color:var(--teal);">{{ m.course.code }}</span></td>
+          <td><span class="badge badge-gray">{{ m.get_material_type_display }}</span></td>
+          <td style="font-size:12px;">{{ m.uploaded_by.full_name|default:m.uploaded_by.username }}</td>
+          <td>
+            {% if m.is_visible %}
+            <span class="badge badge-green">Visible</span>
+            {% else %}
+            <span class="badge badge-red">Hidden</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--gray);">{{ m.uploaded_at|date:"M d, Y" }}</td>
+          <td>
+            <form method="post" action="{% url 'admin_delete_material' m.id %}" onsubmit="return confirm('Delete this material?')">
+              {% csrf_token %}
+              <button type="submit" class="btn-ghost btn-sm btn">🗑</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">
+          <div class="empty-state"><div class="empty-icon">📁</div><div class="empty-title">No materials found</div></div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
