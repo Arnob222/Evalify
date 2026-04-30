@@ -40,6 +40,7 @@
                padding:2px 10px;border-radius:20px;">{{ courses|length }}</span>
 </div>
 
+
 {% if courses %}
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px;">
   {% for course in courses %}
@@ -144,6 +145,90 @@
   <div class="empty-icon">📚</div>
   <div class="empty-title">Not enrolled in any course yet</div>
   <div style="font-size:13px;">Enter the enrollment code above to join your first course.</div>
+</div>
+{% endif %}
+
+{% if archived_courses %}
+<!-- ── Archived Courses ── -->
+<div style="display:flex;align-items:center;gap:10px;margin-top:32px;margin-bottom:18px;">
+  <div style="font-size:15px;font-weight:700;color:var(--gray);">Archived Courses</div>
+  <span style="background:#f3f4f6;color:#6b7280;font-size:12px;font-weight:700;
+               padding:2px 10px;border-radius:20px;">{{ archived_courses|length }}</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px;">
+  {% for course in archived_courses %}
+  <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;
+              overflow:hidden;display:flex;flex-direction:column;opacity:.85;">
+
+    <!-- Greyed header strip -->
+    <div style="background:linear-gradient(135deg,#6b7280,#4b5563);padding:20px 22px 18px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.7);
+                      letter-spacing:.6px;text-transform:uppercase;margin-bottom:4px;">
+            {{ course.code }}
+          </div>
+          <div style="font-size:19px;font-weight:800;color:#fff;line-height:1.25;">
+            {{ course.name }}
+          </div>
+        </div>
+        <span style="background:rgba(0,0,0,.25);color:#fff;font-size:11px;
+                     font-weight:700;padding:4px 10px;border-radius:20px;
+                     white-space:nowrap;flex-shrink:0;margin-left:10px;letter-spacing:.5px;">
+          ARCHIVED
+        </span>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:12px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.25);
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:13px;font-weight:800;color:#fff;flex-shrink:0;">
+          {{ course.faculty.full_name|default:course.faculty.username|first|upper }}
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#fff;">
+            {{ course.faculty.full_name|default:course.faculty.username }}
+          </div>
+          <div style="font-size:11px;color:rgba(255,255,255,.6);">Course Instructor</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:16px 22px;flex:1;display:flex;flex-direction:column;gap:10px;">
+      <div style="font-size:12px;color:var(--gray);">📅 {{ course.semester }}</div>
+
+      <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;
+                  padding:10px 13px;font-size:12px;color:#92400e;">
+        This course has been archived. You can view its content but cannot submit new work.
+      </div>
+
+      {% if course.description %}
+      <div style="font-size:13px;color:var(--gray);line-height:1.5;">
+        {{ course.description|truncatechars:100 }}
+      </div>
+      {% endif %}
+
+      <!-- Footer stats -->
+      <div style="border-top:1px solid var(--border);padding-top:12px;
+                  display:flex;align-items:center;margin-top:auto;">
+        <div style="flex:1;text-align:center;border-right:1px solid var(--border);">
+          <div style="font-size:20px;font-weight:800;color:#9ca3af;">{{ course.clos_list|length }}</div>
+          <div style="font-size:11px;color:var(--gray);">CLOs</div>
+        </div>
+        <div style="flex:1;text-align:center;border-right:1px solid var(--border);">
+          <div style="font-size:20px;font-weight:800;color:#9ca3af;">{{ course.assignment_count }}</div>
+          <div style="font-size:11px;color:var(--gray);">Assessments</div>
+        </div>
+        <div style="flex:1;text-align:center;">
+          <a href="{% url 'student_assignments' %}"
+             style="font-size:12px;font-weight:600;color:#9ca3af;text-decoration:none;">
+            View →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
 </div>
 {% endif %}
 

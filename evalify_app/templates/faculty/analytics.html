@@ -12,7 +12,7 @@
     <select name="course" class="form-control" style="width:260px;" onchange="this.form.submit()">
       {% for c in courses %}
       <option value="{{ c.id }}" {% if selected_course and selected_course.id == c.id %}selected{% endif %}>
-        {{ c.code }}: {{ c.name }}
+        {{ c.code }}: {{ c.name }}{% if c.is_archived %} [Archived]{% endif %}
       </option>
       {% endfor %}
     </select>

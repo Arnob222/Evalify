@@ -44,11 +44,81 @@
 
 <!-- Legend -->
 <div class="legend-row">
-  <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div> Excellent</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#20b2aa;"></div> Good</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div> Developing</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div> Needs Attention</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div> Excellent (&ge;80%)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#20b2aa;"></div> Good (&ge;60%)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div> Developing (&ge;40%)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div> Needs Attention (&lt;40%)</div>
 </div>
+
+<!-- ══ Overall Program PLO Attainment ══════════════════════════════════ -->
+{% if program_plo_attainment %}
+<div style="background:#fff;border-radius:14px;border:2px solid var(--teal);
+            padding:24px;margin-bottom:28px;
+            box-shadow:0 4px 16px rgba(32,178,170,.10);">
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
+    <div>
+      <div style="font-size:18px;font-weight:800;color:var(--teal);">Overall Program PLO Attainment</div>
+      <div style="font-size:13px;color:var(--gray);margin-top:3px;">
+        Aggregated across all your enrolled courses
+      </div>
+    </div>
+    <span style="font-size:32px;">🎯</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;">
+
+    <!-- Radar chart -->
+    <div style="background:#f9fafb;border-radius:10px;padding:16px;">
+      <div style="font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;
+                  letter-spacing:.5px;margin-bottom:10px;">PLO Radar</div>
+      <div style="position:relative;height:280px;">
+        <canvas id="programPloRadar"></canvas>
+      </div>
+    </div>
+
+    <!-- Progress bars -->
+    <div>
+      <div class="section-label" style="margin-bottom:14px;">Breakdown</div>
+      {% for plo in program_plo_attainment %}
+      <div class="att-row">
+        <div class="att-hdr">
+          <div style="flex:1;min-width:0;">
+            <span class="att-code">{{ plo.code }}</span>
+            <span class="att-desc">{{ plo.description|truncatechars:55 }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:10px;">
+            <span style="font-size:12px;font-weight:700;color:#374151;">
+              {{ plo.obtained }}/{{ plo.total }} ({{ plo.attainment }}%)
+            </span>
+            <span class="level-pill
+              {% if plo.attainment >= 80 %}level-excellent
+              {% elif plo.attainment >= 60 %}level-good
+              {% elif plo.attainment >= 40 %}level-developing
+              {% else %}level-needs{% endif %}">
+              {% if plo.attainment >= 80 %}Excellent
+              {% elif plo.attainment >= 60 %}Good
+              {% elif plo.attainment >= 40 %}Developing
+              {% else %}Needs Attention{% endif %}
+            </span>
+          </div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill
+            {% if plo.attainment >= 80 %}green
+            {% elif plo.attainment >= 60 %}
+            {% elif plo.attainment >= 40 %}orange
+            {% else %}red{% endif %}"
+               style="width:{{ plo.attainment }}%;transition:width .8s ease;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</div>
+{% endif %}
+<!-- ══ end overall ══════════════════════════════════════════════════════ -->
 
 {% if results %}
   {% for item in results %}
@@ -175,6 +245,52 @@ const BAR_PALETTE = [
   '#4472C4','#ED7D31','#70AD47','#7030A0','#00B0F0',
   '#FFC000','#FF0000','#00B050','#C00000','#993366'
 ];
+
+// ── Overall Program PLO Radar ─────────────────────────────────────────
+{% if program_plo_attainment %}
+(function(){
+  const el = document.getElementById('programPloRadar');
+  if (!el) return;
+  const codes  = [{% for p in program_plo_attainment %}'{{ p.code }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+  const values = [{% for p in program_plo_attainment %}{{ p.attainment }}{% if not forloop.last %},{% endif %}{% endfor %}];
+  new Chart(el, {
+    type: 'radar',
+    data: {
+      labels: codes,
+      datasets: [{
+        label: 'PLO Attainment (%)',
+        data: values,
+        backgroundColor: 'rgba(32,178,170,0.15)',
+        borderColor: '#20B2AA',
+        borderWidth: 2,
+        pointBackgroundColor: values.map(v => getColor(v)),
+        pointBorderColor: '#fff',
+        pointRadius: 5,
+        pointHoverRadius: 7,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%` }
+        }
+      },
+      scales: {
+        r: {
+          min: 0, max: 100,
+          ticks: { font: { size: 9 }, stepSize: 20, color: '#6b7280', backdropColor: 'transparent' },
+          grid: { color: '#e2e8f0' },
+          angleLines: { color: '#e2e8f0' },
+          pointLabels: { font: { size: 11, weight: '600' }, color: '#374151' }
+        }
+      }
+    }
+  });
+})();
+{% endif %}
 
 {% for item in results %}
 {% if item.clo_results %}

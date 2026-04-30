@@ -35,6 +35,7 @@ class Course(models.Model):
     faculty = models.ForeignKey(User, on_delete=models.CASCADE, related_name='courses')
     created_at = models.DateTimeField(auto_now_add=True)
     enrollment_code = models.CharField(max_length=8, unique=True, blank=True, default='')
+    is_archived = models.BooleanField(default=False)
 
     def _gen_code(self):
         chars = string.ascii_uppercase + string.digits
