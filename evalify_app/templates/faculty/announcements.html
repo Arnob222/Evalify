@@ -53,7 +53,7 @@
         <select id="annCourse" class="form-control">
           <option value="">Select a course...</option>
           {% for c in courses %}
-          <option value="{{ c.id }}">{{ c.code }}: {{ c.name }}</option>
+          <option value="{{ c.id }}">{{ c.code }}: {{ c.name }}{% if c.is_archived %} [Archived]{% endif %}</option>
           {% endfor %}
         </select>
       </div>

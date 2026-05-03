@@ -62,6 +62,12 @@
                      padding:5px 10px;cursor:pointer;font-size:12px;color:var(--gray);">
         Copy
       </button>
+      <button onclick="toggleArchive({{ course.id }}, this)" id="archive-btn-{{ course.id }}"
+              title="Archive this course"
+              style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;
+                     padding:5px 10px;cursor:pointer;font-size:12px;color:#c2410c;font-weight:600;">
+        Archive
+      </button>
     </div>
 
     <!-- Stats chips -->
@@ -230,7 +236,81 @@
 </div>
 {% endfor %}
 
+{% if archived_courses %}
+<!-- ══════════ ARCHIVED COURSES ══════════ -->
+<div style="margin-top:32px;margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+  <div style="font-size:15px;font-weight:700;color:var(--gray);">Archived Courses</div>
+  <span style="background:#f3f4f6;color:#6b7280;font-size:12px;font-weight:700;
+               padding:2px 10px;border-radius:20px;">{{ archived_courses|length }}</span>
+</div>
+{% for course in archived_courses %}
+<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;
+            margin-bottom:12px;overflow:hidden;opacity:.85;">
 
+  <!-- Archived course header -->
+  <div onclick="toggleCourse({{ course.id }})"
+       style="padding:16px 22px;cursor:pointer;display:flex;align-items:center;gap:16px;"
+       id="course-hdr-{{ course.id }}"
+       onmouseover="this.style.background='#f3f4f6';"
+       onmouseout="this.style.background='';">
+
+    <!-- Greyed swatch -->
+    <div style="width:46px;height:46px;border-radius:10px;
+                background:linear-gradient(135deg,#9ca3af,#6b7280);
+                display:flex;align-items:center;justify-content:center;
+                font-size:18px;font-weight:800;color:#fff;flex-shrink:0;letter-spacing:-1px;">
+      {{ course.code|slice:":2"|upper }}
+    </div>
+
+    <!-- Name + meta -->
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:16px;font-weight:700;color:#6b7280;display:flex;align-items:center;gap:8px;">
+        {{ course.code }}: {{ course.name }}
+        <span style="background:#e5e7eb;color:#6b7280;font-size:10px;font-weight:700;
+                     padding:2px 8px;border-radius:4px;letter-spacing:.5px;">ARCHIVED</span>
+      </div>
+      <div style="font-size:12px;color:#9ca3af;margin-top:2px;">
+        {{ course.semester }} &nbsp;·&nbsp; {{ course.credit_hours }} Credit Hours
+      </div>
+    </div>
+
+    <!-- Stats chips -->
+    <div style="display:flex;gap:6px;flex-shrink:0;" onclick="event.stopPropagation()">
+      <span style="background:#f3f4f6;color:#9ca3af;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">
+        {{ course.clos.count }} CLOs
+      </span>
+      <span style="background:#f3f4f6;color:#9ca3af;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">
+        {{ course.enrollments.count }} Students
+      </span>
+      <button onclick="event.stopPropagation();toggleArchive({{ course.id }}, this)" id="archive-btn-{{ course.id }}"
+              style="background:#dcfce7;border:1px solid #86efac;border-radius:6px;
+                     padding:5px 10px;cursor:pointer;font-size:12px;color:#166534;font-weight:600;">
+        Unarchive
+      </button>
+    </div>
+
+    <span id="chevron-c-{{ course.id }}"
+          style="font-size:13px;color:#9ca3af;transition:transform .2s;flex-shrink:0;">▼</span>
+  </div>
+
+  <!-- Course body (read-only tabs) -->
+  <div id="course-body-{{ course.id }}" style="display:none;border-top:1px solid #e5e7eb;">
+    <div style="padding:14px 22px;font-size:13px;color:#6b7280;">
+      <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;
+                  padding:10px 14px;font-size:13px;color:#92400e;margin-bottom:14px;">
+        This course is archived. Students can view content but cannot submit new work.
+      </div>
+      <strong>CLOs:</strong>
+      {% for clo in course.clos.all %}
+        <span class="tag tag-clo" style="opacity:.7;">{{ clo.code }}</span>
+      {% empty %}None{% endfor %}
+      &nbsp;&nbsp;
+      <strong>Students enrolled:</strong> {{ course.enrollments.count }}
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
 
 
 <!-- ══════════ MODALS ══════════ -->
@@ -444,6 +524,16 @@
 
 {% block scripts %}
 <script>
+/* ── Archive / Unarchive ── */
+async function toggleArchive(courseId, btn) {
+  const res = await apiPost(`/faculty/courses/${courseId}/archive/`, {});
+  if (res.success) {
+    location.reload();
+  } else {
+    alert(res.error || 'Something went wrong.');
+  }
+}
+
 /* ── Course accordion ── */
 function toggleCourse(id) {
   const body    = document.getElementById('course-body-' + id);

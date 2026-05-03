@@ -23,7 +23,7 @@
     <option value="">All Courses</option>
     {% for course in courses %}
     <option value="{{ course.id }}" {% if course_filter == course.id|stringformat:"s" %}selected{% endif %}>
-      {{ course.code }}: {{ course.name }}
+      {{ course.code }}: {{ course.name }}{% if course.is_archived %} [Archived]{% endif %}
     </option>
     {% endfor %}
   </select>

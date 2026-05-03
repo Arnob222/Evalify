@@ -200,27 +200,43 @@ def faculty_enrolled_students(request):
 
 @faculty_required
 def faculty_courses(request):
-    courses = Course.objects.filter(faculty=request.user).prefetch_related(
+    all_courses = Course.objects.filter(faculty=request.user).prefetch_related(
         'clos', 'clos__plos', 'enrollments', 'enrollments__student'
     )
-    for course in courses:
+    active_courses = []
+    archived_courses = []
+    for course in all_courses:
         plo_ids = set()
         for clo in course.clos.all():
             for plo in clo.plos.all():
                 plo_ids.add(plo.id)
         course.plo_count = len(plo_ids)
+        if course.is_archived:
+            archived_courses.append(course)
+        else:
+            active_courses.append(course)
 
-    # All unique enrolled students across all courses for the global students section
     all_enrollments = Enrollment.objects.filter(
         course__faculty=request.user
     ).select_related('student', 'course').order_by('student__full_name', 'course__code')
 
     plos = PLO.objects.all()
     return render(request, 'faculty/courses.html', {
-        'courses': courses,
+        'courses': active_courses,
+        'archived_courses': archived_courses,
         'plos': plos,
         'all_enrollments': all_enrollments,
     })
+
+
+@faculty_required
+def archive_course(request, course_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=400)
+    course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    course.is_archived = not course.is_archived
+    course.save()
+    return JsonResponse({'success': True, 'is_archived': course.is_archived})
  
 
 
@@ -971,13 +987,20 @@ def student_dashboard(request):
 @student_required
 def student_courses(request):
     enrollments = Enrollment.objects.filter(student=request.user).select_related('course')
-    courses = []
+    active_courses = []
+    archived_courses = []
     for e in enrollments:
         c = e.course
         c.clos_list = c.clos.prefetch_related('plos').all()
         c.assignment_count = Assessment.objects.filter(course=c, status='published').count()
-        courses.append(c)
-    return render(request, 'student/courses.html', {'courses': courses})
+        if c.is_archived:
+            archived_courses.append(c)
+        else:
+            active_courses.append(c)
+    return render(request, 'student/courses.html', {
+        'courses': active_courses,
+        'archived_courses': archived_courses,
+    })
 
 
 @student_required
@@ -987,6 +1010,8 @@ def enroll_via_code(request):
         code = data.get('code', '').strip().upper()
         try:
             course = Course.objects.get(enrollment_code=code)
+            if course.is_archived:
+                return JsonResponse({'error': 'This course is archived and no longer accepting new enrollments.'}, status=400)
             _, created = Enrollment.objects.get_or_create(student=request.user, course=course)
             if created:
                 return JsonResponse({'success': True, 'course': f"{course.code}: {course.name}"})
@@ -1038,6 +1063,8 @@ def submit_assessment(request, assessment_id):
     assessment = get_object_or_404(Assessment, id=assessment_id, status='published')
     if not Enrollment.objects.filter(student=request.user, course=assessment.course).exists():
         return JsonResponse({'error': 'Not enrolled'}, status=403)
+    if assessment.course.is_archived:
+        return JsonResponse({'error': 'This course is archived. Submissions are no longer accepted.'}, status=403)
     if request.method == 'POST':
         data = json.loads(request.body)
         content = data.get('content', '')
@@ -1059,6 +1086,7 @@ def submit_assessment(request, assessment_id):
 def student_clo_results(request):
     enrollments = Enrollment.objects.filter(student=request.user).select_related('course')
     results = []
+    program_plo_data = {}   # plo_id -> {code, description, total_max, total_raw}
     SUB_TYPES = {'mid', 'final'}
 
     for e in enrollments:
@@ -1172,6 +1200,14 @@ def student_clo_results(request):
             raw = sum(_mark(col) for col in all_columns if p.id in col['plo_ids'])
             att = round(raw / mx * 100, 1)
             plo_results.append({'code': p.code, 'description': p.description, 'attainment': att})
+            # accumulate for program-level summary
+            if p.id not in program_plo_data:
+                program_plo_data[p.id] = {
+                    'code': p.code, 'description': p.description,
+                    'total_max': 0.0, 'total_raw': 0.0,
+                }
+            program_plo_data[p.id]['total_max'] += mx
+            program_plo_data[p.id]['total_raw'] += raw
 
         graded_count = Submission.objects.filter(
             student=request.user, assessment__in=assessments,
@@ -1185,7 +1221,24 @@ def student_clo_results(request):
             'plo_results': plo_results,
         })
 
-    return render(request, 'student/clo_results.html', {'results': results})
+    program_plo_attainment = sorted(
+        [
+            {
+                'code': d['code'],
+                'description': d['description'],
+                'attainment': round(d['total_raw'] / d['total_max'] * 100, 1),
+                'obtained': round(d['total_raw'], 1),
+                'total': round(d['total_max'], 1),
+            }
+            for d in program_plo_data.values() if d['total_max'] > 0
+        ],
+        key=lambda x: x['code'],
+    )
+
+    return render(request, 'student/clo_results.html', {
+        'results': results,
+        'program_plo_attainment': program_plo_attainment,
+    })
 
 
 @student_required
@@ -1698,6 +1751,10 @@ def submit_assignment(request, assignment_id):
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
 
+    if assignment.course.is_archived:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden("This course is archived. Submissions are no longer accepted.")
+
     existing_sub = Submission.objects.filter(student=request.user, assessment=assignment).first()
     window       = check_submission_window(assignment)
     questions    = assignment.questions.prefetch_related(
@@ -1743,6 +1800,10 @@ def unsubmit_assignment(request, assignment_id):
         return JsonResponse({'error': 'POST required'}, status=400)
 
     assignment = get_object_or_404(Assessment, id=assignment_id, status='published')
+
+    if assignment.course.is_archived:
+        return JsonResponse({'error': 'This course is archived.'}, status=403)
+
     sub = Submission.objects.filter(student=request.user, assessment=assignment).first()
 
     if not sub:
@@ -2550,6 +2611,7 @@ def download_assessment(request, assessment_id, fmt):
         from reportlab.lib.enums import TA_CENTER
         import io
 
+        from xml.sax.saxutils import escape as _xe
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4,
                                 leftMargin=2*cm, rightMargin=2*cm,
@@ -2565,19 +2627,19 @@ def download_assessment(request, assessment_id, fmt):
         sub_style   = ParagraphStyle('ASub', parent=styles['Normal'],
             fontSize=10, fontName='Helvetica', textColor=GRAY, spaceAfter=2)
         qnum_style  = ParagraphStyle('QNum', parent=styles['Normal'],
-            fontSize=12, fontName='Helvetica-Bold', textColor=TEAL)
+            fontSize=12, fontName='Helvetica-Bold', textColor=TEAL, alignment=TA_CENTER)
         qtext_style = ParagraphStyle('QText', parent=styles['Normal'],
             fontSize=11, fontName='Helvetica', leading=15)
         sq_style    = ParagraphStyle('SQText', parent=styles['Normal'],
-            fontSize=10, fontName='Helvetica', leftIndent=20, leading=14,
+            fontSize=10, fontName='Helvetica', leading=14,
             textColor=colors.HexColor('#374151'))
 
         story = []
 
         header_data = [[
-            Paragraph(f"{assessment.course.code}: {assessment.course.name}", title_style),
+            Paragraph(f"{_xe(assessment.course.code)}: {_xe(assessment.course.name)}", title_style),
             Paragraph(
-                f"<font color='#20B2AA'><b>{assessment.get_assessment_type_display()}</b></font>",
+                f"<font color='#20B2AA'><b>{_xe(assessment.get_assessment_type_display())}</b></font>",
                 ParagraphStyle('th', parent=styles['Normal'], fontSize=13,
                                fontName='Helvetica-Bold', alignment=TA_CENTER)
             )
@@ -2586,7 +2648,6 @@ def download_assessment(request, assessment_id, fmt):
         ht.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,-1), LTEAL),
             ('BOX',        (0,0), (-1,-1), 0.5, TEAL),
-            ('ROUNDEDCORNERS', [6]),
             ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
             ('LEFTPADDING',(0,0), (-1,-1), 14),
             ('RIGHTPADDING',(0,0),(-1,-1), 14),
@@ -2599,9 +2660,9 @@ def download_assessment(request, assessment_id, fmt):
         due_txt  = str(assessment.due_date) if assessment.due_date else 'No due date'
         meta_txt = (f"<b>Total Marks:</b> {assessment.total_marks} &nbsp;&nbsp; "
                     f"<b>Due Date:</b> {due_txt} &nbsp;&nbsp; "
-                    f"<b>Semester:</b> {assessment.course.semester}")
+                    f"<b>Semester:</b> {_xe(assessment.course.semester)}")
         if assessment.description:
-            meta_txt += f"<br/><b>Description:</b> {assessment.description}"
+            meta_txt += f"<br/><b>Description:</b> {_xe(assessment.description)}"
         story.append(Paragraph(meta_txt, sub_style))
         story.append(Spacer(1, 6))
         story.append(HRFlowable(width='100%', thickness=1, color=TEAL))
@@ -2613,81 +2674,59 @@ def download_assessment(request, assessment_id, fmt):
 
             q_data = [[
                 Paragraph(f"Q{q.order}", qnum_style),
-                Paragraph(q.text, qtext_style),
-                Paragraph(f"<b>{q.max_marks} marks</b>",
-                          ParagraphStyle('mk', parent=styles['Normal'],
-                                         fontSize=11, fontName='Helvetica-Bold',
-                                         alignment=TA_CENTER, textColor=ORANGE))
+                Paragraph(_xe(q.text), qtext_style),
+                Paragraph(
+                    f"<font color='#f97316'><b>{q.max_marks} marks</b></font><br/>"
+                    f"<font color='#1d4ed8' size='8'><b>CLO:</b> {_xe(clo_codes)}</font><br/>"
+                    f"<font color='#9d174d' size='8'><b>PLO:</b> {_xe(plo_codes)}</font>",
+                    ParagraphStyle('mk', parent=styles['Normal'],
+                                   fontSize=10, fontName='Helvetica',
+                                   alignment=TA_CENTER, leading=13)
+                ),
             ]]
-            qt = Table(q_data, colWidths=[1*cm, '75%', '18%'])
+            qt = Table(q_data, colWidths=[1.0*cm, 11.8*cm, 4.2*cm])
             qt.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
                 ('BOX',       (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
                 ('VALIGN',    (0,0), (-1,-1), 'TOP'),
                 ('LEFTPADDING',(0,0),(-1,-1), 10),
-                ('RIGHTPADDING',(0,0),(-1,-1),10),
+                ('RIGHTPADDING',(0,0),(-1,-1), 10),
                 ('TOPPADDING',(0,0),(-1,-1), 10),
-                ('BOTTOMPADDING',(0,0),(-1,-1), 4),
+                ('BOTTOMPADDING',(0,0),(-1,-1), 10),
             ]))
             story.append(qt)
-
-            tag_data = [[
-                Paragraph(
-                    f"<font color='#1d4ed8'><b>CLO:</b> {clo_codes}</font> &nbsp;&nbsp; "
-                    f"<font color='#9d174d'><b>PLO:</b> {plo_codes}</font>",
-                    ParagraphStyle('tags', parent=styles['Normal'], fontSize=9,
-                                   fontName='Helvetica', textColor=GRAY, leading=12)
-                )
-            ]]
-            tt = Table(tag_data, colWidths=['100%'])
-            tt.setStyle(TableStyle([
-                ('BACKGROUND',(0,0),(-1,-1), colors.HexColor('#eff6ff')),
-                ('LEFTPADDING',(0,0),(-1,-1), 12),
-                ('RIGHTPADDING',(0,0),(-1,-1),12),
-                ('TOPPADDING',(0,0),(-1,-1), 5),
-                ('BOTTOMPADDING',(0,0),(-1,-1), 7),
-                ('BOX',(0,0),(-1,-1), 0.3, colors.HexColor('#bfdbfe')),
-            ]))
-            story.append(tt)
 
             for sq in q.sub_questions.order_by('order'):
                 sq_clo = ', '.join(c.code for c in sq.clos.all()) or '—'
                 sq_plo = ', '.join(p.code for p in sq.plos.all()) or '—'
                 sq_data = [[
                     Paragraph(f"({sq.order})", ParagraphStyle('sqn', parent=styles['Normal'],
-                        fontSize=10, fontName='Helvetica-Bold', textColor=GRAY)),
-                    Paragraph(sq.text, sq_style),
-                    Paragraph(f"<b>{sq.max_marks} marks</b>",
-                              ParagraphStyle('sqm', parent=styles['Normal'],
-                                             fontSize=9, fontName='Helvetica-Bold',
-                                             alignment=TA_CENTER, textColor=ORANGE))
+                        fontSize=10, fontName='Helvetica-Bold', textColor=GRAY,
+                        alignment=TA_CENTER)),
+                    Paragraph(_xe(sq.text), sq_style),
+                    Paragraph(
+                        f"<font color='#f97316'><b>{sq.max_marks} marks</b></font><br/>"
+                        f"<font color='#1d4ed8' size='8'><b>CLO:</b> {_xe(sq_clo)}</font><br/>"
+                        f"<font color='#9d174d' size='8'><b>PLO:</b> {_xe(sq_plo)}</font>",
+                        ParagraphStyle('sqm', parent=styles['Normal'],
+                                       fontSize=9, fontName='Helvetica',
+                                       alignment=TA_CENTER, leading=12)
+                    ),
                 ]]
-                stt = Table(sq_data, colWidths=[0.8*cm, '76%', '18%'])
+                stt = Table(sq_data, colWidths=[1.0*cm, 11.8*cm, 4.2*cm])
                 stt.setStyle(TableStyle([
-                    ('BACKGROUND',(0,0),(-1,-1), colors.white),
-                    ('LEFTPADDING',(0,0),(-1,-1),18),
-                    ('RIGHTPADDING',(0,0),(-1,-1),10),
-                    ('TOPPADDING',(0,0),(-1,-1),4),
-                    ('BOTTOMPADDING',(0,0),(-1,-1),2),
-                    ('LINEBELOW',(0,0),(-1,-1),0.3, colors.HexColor('#e2e8f0')),
+                    ('BACKGROUND',(0,0),(-1,-1), colors.HexColor('#fafbfc')),
+                    ('LINEBEFORE',(0,0),(0,-1), 3, TEAL),
+                    ('LINEBELOW', (0,0),(-1,-1), 0.3, colors.HexColor('#e2e8f0')),
+                    ('LEFTPADDING',(0,0),(0,-1), 10),
+                    ('LEFTPADDING',(1,0),(1,-1), 18),
+                    ('LEFTPADDING',(2,0),(2,-1), 8),
+                    ('RIGHTPADDING',(0,0),(-1,-1), 8),
+                    ('TOPPADDING',(0,0),(-1,-1), 6),
+                    ('BOTTOMPADDING',(0,0),(-1,-1), 6),
+                    ('VALIGN',(0,0),(-1,-1), 'TOP'),
                 ]))
                 story.append(stt)
-                sq_tag = Table([[
-                    Paragraph(
-                        f"<font color='#1d4ed8'><b>CLO:</b> {sq_clo}</font> &nbsp;&nbsp; "
-                        f"<font color='#9d174d'><b>PLO:</b> {sq_plo}</font>",
-                        ParagraphStyle('sqtag', parent=styles['Normal'],
-                                       fontSize=8, fontName='Helvetica',
-                                       textColor=GRAY, leading=11, leftIndent=20)
-                    )
-                ]], colWidths=['100%'])
-                sq_tag.setStyle(TableStyle([
-                    ('BACKGROUND',(0,0),(-1,-1), colors.HexColor('#fdf4ff')),
-                    ('LEFTPADDING',(0,0),(-1,-1),30),
-                    ('TOPPADDING',(0,0),(-1,-1),3),
-                    ('BOTTOMPADDING',(0,0),(-1,-1),4),
-                ]))
-                story.append(sq_tag)
 
             story.append(Spacer(1, 10))
 
@@ -2764,10 +2803,12 @@ def download_assessment(request, assessment_id, fmt):
 
             tbl = doc.add_table(rows=1, cols=3)
             tbl.style = 'Table Grid'
-            tbl.columns[0].width = Cm(1.2)
-            tbl.columns[1].width = Cm(13)
-            tbl.columns[2].width = Cm(2.8)
+            tbl.autofit = False
+            tbl.allow_autofit = False
             row = tbl.rows[0]
+            row.cells[0].width = Cm(1.2)
+            row.cells[1].width = Cm(11.0)
+            row.cells[2].width = Cm(3.8)
             set_cell_bg(row.cells[0], 'f0fafa')
             set_cell_bg(row.cells[1], 'f8fafc')
             set_cell_bg(row.cells[2], 'f8fafc')
@@ -2779,55 +2820,44 @@ def download_assessment(request, assessment_id, fmt):
             r1 = c1.add_run(q.text); r1.font.size = Pt(11)
             c2 = row.cells[2].paragraphs[0]
             c2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            r2 = c2.add_run(f"{q.max_marks} marks")
-            r2.font.bold = True; r2.font.size = Pt(11)
-            r2.font.color.rgb = hex_rgb('#f97316')
-
-            tbl2 = doc.add_table(rows=1, cols=1)
-            tbl2.style = 'Table Grid'
-            tc = tbl2.rows[0].cells[0]
-            set_cell_bg(tc, 'eff6ff')
-            cp = tc.paragraphs[0]
-            cr1 = cp.add_run(f"CLO: {clo_codes}     ")
-            cr1.font.bold = True; cr1.font.size = Pt(9)
-            cr1.font.color.rgb = hex_rgb('#1d4ed8')
-            cr2 = cp.add_run(f"PLO: {plo_codes}")
-            cr2.font.bold = True; cr2.font.size = Pt(9)
-            cr2.font.color.rgb = hex_rgb('#9d174d')
+            rm = c2.add_run(f"{q.max_marks} marks\n")
+            rm.font.bold = True; rm.font.size = Pt(11)
+            rm.font.color.rgb = hex_rgb('#f97316')
+            rc = c2.add_run(f"CLO: {clo_codes}\n")
+            rc.font.bold = True; rc.font.size = Pt(8)
+            rc.font.color.rgb = hex_rgb('#1d4ed8')
+            rp = c2.add_run(f"PLO: {plo_codes}")
+            rp.font.bold = True; rp.font.size = Pt(8)
+            rp.font.color.rgb = hex_rgb('#9d174d')
 
             for sq in q.sub_questions.order_by('order'):
                 sq_clo = ', '.join(c.code for c in sq.clos.all()) or '—'
                 sq_plo = ', '.join(p.code for p in sq.plos.all()) or '—'
                 stbl = doc.add_table(rows=1, cols=3)
                 stbl.style = 'Table Grid'
-                stbl.columns[0].width = Cm(1.2)
-                stbl.columns[1].width = Cm(13)
-                stbl.columns[2].width = Cm(2.8)
+                stbl.autofit = False
+                stbl.allow_autofit = False
                 sr = stbl.rows[0]
-                set_cell_bg(sr.cells[0], 'ffffff')
+                sr.cells[0].width = Cm(1.2)
+                sr.cells[1].width = Cm(11.0)
+                sr.cells[2].width = Cm(3.8)
+                set_cell_bg(sr.cells[0], 'f0fafa')
                 set_cell_bg(sr.cells[1], 'ffffff')
                 set_cell_bg(sr.cells[2], 'ffffff')
-                sr.cells[0].paragraphs[0].add_run(f"  ({sq.order})").font.size = Pt(9)
+                sr.cells[0].paragraphs[0].add_run(f"({sq.order})").font.size = Pt(9)
                 st = sr.cells[1].paragraphs[0]
-                st.paragraph_format.left_indent = Cm(0.5)
                 st.add_run(sq.text).font.size = Pt(10)
                 sm = sr.cells[2].paragraphs[0]
                 sm.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                smr = sm.add_run(f"{sq.max_marks} marks")
+                smr = sm.add_run(f"{sq.max_marks} marks\n")
                 smr.font.bold = True; smr.font.size = Pt(9)
                 smr.font.color.rgb = hex_rgb('#f97316')
-                stbl2 = doc.add_table(rows=1, cols=1)
-                stbl2.style = 'Table Grid'
-                stc = stbl2.rows[0].cells[0]
-                set_cell_bg(stc, 'fdf4ff')
-                scp = stc.paragraphs[0]
-                scp.paragraph_format.left_indent = Cm(0.8)
-                scr1 = scp.add_run(f"CLO: {sq_clo}     ")
-                scr1.font.bold = True; scr1.font.size = Pt(8)
-                scr1.font.color.rgb = hex_rgb('#1d4ed8')
-                scr2 = scp.add_run(f"PLO: {sq_plo}")
-                scr2.font.bold = True; scr2.font.size = Pt(8)
-                scr2.font.color.rgb = hex_rgb('#9d174d')
+                smrc = sm.add_run(f"CLO: {sq_clo}\n")
+                smrc.font.bold = True; smrc.font.size = Pt(7)
+                smrc.font.color.rgb = hex_rgb('#1d4ed8')
+                smrp = sm.add_run(f"PLO: {sq_plo}")
+                smrp.font.bold = True; smrp.font.size = Pt(7)
+                smrp.font.color.rgb = hex_rgb('#9d174d')
 
             doc.add_paragraph()
 
