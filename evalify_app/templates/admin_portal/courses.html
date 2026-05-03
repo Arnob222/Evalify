@@ -34,7 +34,6 @@
           <th>Students</th>
           <th>Assessments</th>
           <th>Created</th>
-          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -45,20 +44,14 @@
             <div style="font-size:12px;color:var(--text);">{{ c.name }}</div>
             <div style="font-size:11px;color:var(--light);">{{ c.credit_hours }} Credit Hrs</div>
           </td>
-          <td style="font-size:13px;">{{ c.faculty.full_name|default:c.faculty.username }}</td>
+          <td style="font-size:13px;">{% with f=c.faculty.first %}{{ f.full_name|default:f.username|default:"—" }}{% endwith %}</td>
           <td><span class="badge badge-gray">{{ c.semester }}</span></td>
           <td><span class="badge badge-blue">{{ c.enrollments.count }}</span></td>
           <td><span class="badge badge-teal">{{ c.assessments.count }}</span></td>
           <td style="font-size:12px;color:var(--gray);">{{ c.created_at|date:"M d, Y" }}</td>
-          <td>
-            <form method="post" action="{% url 'admin_delete_course' c.id %}" onsubmit="return confirm('Delete course {{ c.code }}? All data will be removed.')">
-              {% csrf_token %}
-              <button type="submit" class="btn-ghost btn-sm btn" title="Delete">🗑</button>
-            </form>
-          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="7">
+        <tr><td colspan="6">
           <div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">No courses found</div></div>
         </td></tr>
         {% endfor %}

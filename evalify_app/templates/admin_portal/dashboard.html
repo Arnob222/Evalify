@@ -93,7 +93,7 @@
               <div style="font-weight:600;">{{ c.code }}</div>
               <div style="font-size:11px;color:var(--gray);">{{ c.name }}</div>
             </td>
-            <td style="font-size:12px;">{{ c.faculty.full_name|default:c.faculty.username }}</td>
+            <td style="font-size:12px;">{% with f=c.faculty.first %}{{ f.full_name|default:f.username|default:"—" }}{% endwith %}</td>
             <td>
               <span class="badge badge-gray">{{ c.enrollments.count }}</span>
             </td>

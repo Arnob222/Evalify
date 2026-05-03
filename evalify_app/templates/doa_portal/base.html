@@ -4,16 +4,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Portal — Evalify</title>
+<title>DOA Portal — Evalify</title>
 <link rel="icon" type="image/png" href="{% static 'images/evalify_icon.PNG' %}">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 :root {
-  --sidebar: #0f172a;
-  --teal: #20b2aa;
-  --teal-dark: #178a84;
-  --teal-light: #e0f5f4;
+  --sidebar: #1e1b4b;
+  --indigo: #6366f1;
+  --indigo-dark: #4f46e5;
+  --indigo-light: #eef2ff;
   --bg: #f1f5f9;
   --white: #fff;
   --border: #e2e8f0;
@@ -24,7 +23,7 @@
   --red: #ef4444;
   --green: #10b981;
   --blue: #3b82f6;
-  --purple: #8b5cf6;
+  --teal: #20b2aa;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); display:flex; min-height:100vh; }
@@ -32,19 +31,19 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
 .sidebar { width:240px; min-width:240px; background:var(--sidebar); color:#fff; display:flex; flex-direction:column; padding:0; position:fixed; height:100vh; overflow-y:auto; }
 .sidebar-logo { display:flex; align-items:center; gap:12px; padding:22px 20px 18px; border-bottom:1px solid rgba(255,255,255,0.07); }
 .logo-icon { font-size:24px; }
-.logo-name { font-size:19px; font-weight:800; color:var(--teal); letter-spacing:-0.5px; }
+.logo-name { font-size:19px; font-weight:800; color:var(--indigo); letter-spacing:-0.5px; }
 .logo-sub { font-size:9px; color:rgba(255,255,255,0.35); margin-top:1px; }
-.mode-badge { margin:14px 20px 6px; background:rgba(239,68,68,0.15); color:#fca5a5; font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; padding:5px 10px; border-radius:5px; border:1px solid rgba(239,68,68,0.2); display:inline-block; }
+.mode-badge { margin:14px 20px 6px; background:rgba(99,102,241,0.15); color:#a5b4fc; font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; padding:5px 10px; border-radius:5px; border:1px solid rgba(99,102,241,0.25); display:inline-block; }
 .nav { flex:1; padding:4px 0 10px; }
 .nav-section { font-size:10px; font-weight:600; color:rgba(255,255,255,0.3); letter-spacing:1px; text-transform:uppercase; padding:14px 20px 6px; }
 .nav a { display:flex; align-items:center; gap:10px; padding:10px 20px; color:rgba(255,255,255,0.6); text-decoration:none; font-size:13.5px; transition:all .15s; }
 .nav a:hover { background:rgba(255,255,255,0.06); color:#fff; }
-.nav a.active { background:var(--teal); color:#fff; border-radius:0; position:relative; }
+.nav a.active { background:var(--indigo); color:#fff; border-radius:0; position:relative; }
 .nav a.active::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#fff; border-radius:0 2px 2px 0; }
 .nav-icon { font-size:15px; width:20px; text-align:center; }
 .sidebar-footer { padding:16px 20px; border-top:1px solid rgba(255,255,255,0.07); }
 .user-info { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
-.user-avatar { width:34px; height:34px; border-radius:50%; background:var(--teal); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; flex-shrink:0; }
+.user-avatar { width:34px; height:34px; border-radius:50%; background:var(--indigo); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; flex-shrink:0; }
 .user-name { font-size:13px; font-weight:600; color:#fff; }
 .user-role { font-size:10px; color:rgba(255,255,255,0.4); margin-top:1px; }
 .sign-out-btn { display:flex; align-items:center; gap:8px; color:rgba(255,255,255,0.45); font-size:12px; text-decoration:none; padding:6px 0; transition:color .15s; }
@@ -62,12 +61,12 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
 .stat-val { font-size:32px; font-weight:800; letter-spacing:-1px; }
 .stat-sub { font-size:11px; color:var(--light); margin-top:3px; }
 .stat-icon-wrap { width:46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; }
-.si-blue  { background:#eff6ff; }
-.si-teal  { background:#e0f5f4; }
-.si-green { background:#f0fdf4; }
-.si-orange{ background:#fff7ed; }
-.si-red   { background:#fef2f2; }
-.si-purple{ background:#f5f3ff; }
+.si-blue   { background:#eff6ff; }
+.si-teal   { background:#e0f5f4; }
+.si-green  { background:#f0fdf4; }
+.si-orange { background:#fff7ed; }
+.si-indigo { background:#eef2ff; }
+.si-purple { background:#f5f3ff; }
 
 .panel { background:#fff; border:1px solid var(--border); border-radius:12px; }
 .panel-head { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
@@ -88,11 +87,11 @@ tbody tr:hover td { background:#fafbfc; }
 .badge-orange { background:#fff7ed; color:#c2410c; }
 .badge-red    { background:#fef2f2; color:#b91c1c; }
 .badge-gray   { background:#f1f5f9; color:#475569; }
-.badge-purple { background:#f5f3ff; color:#6d28d9; }
+.badge-indigo { background:#eef2ff; color:#4338ca; }
 
 .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:7px; font-size:13px; font-weight:500; cursor:pointer; border:none; transition:all .15s; font-family:'Inter',sans-serif; text-decoration:none; }
-.btn-primary { background:var(--teal); color:#fff; }
-.btn-primary:hover { background:var(--teal-dark); }
+.btn-primary { background:var(--indigo); color:#fff; }
+.btn-primary:hover { background:var(--indigo-dark); }
 .btn-danger  { background:#fef2f2; color:var(--red); border:1px solid #fecaca; }
 .btn-danger:hover  { background:#fee2e2; }
 .btn-outline { background:#fff; color:var(--text); border:1px solid var(--border); }
@@ -114,7 +113,7 @@ tbody tr:hover td { background:#fafbfc; }
 .form-group { margin-bottom:14px; }
 .form-label { display:block; font-size:12px; font-weight:600; color:var(--gray); margin-bottom:5px; text-transform:uppercase; letter-spacing:.4px; }
 .form-control { width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:7px; font-size:13.5px; outline:none; font-family:'Inter',sans-serif; color:var(--text); background:#fff; }
-.form-control:focus { border-color:var(--teal); box-shadow:0 0 0 3px rgba(32,178,170,.1); }
+.form-control:focus { border-color:var(--indigo); box-shadow:0 0 0 3px rgba(99,102,241,.1); }
 .form-hint { font-size:11px; color:var(--light); margin-top:4px; }
 
 .alert { padding:12px 16px; border-radius:8px; font-size:13px; margin-bottom:16px; }
@@ -143,35 +142,29 @@ tbody tr:hover td { background:#fafbfc; }
       <div class="logo-sub">Measure Learning. Improve Outcomes.</div>
     </div>
   </div>
-  <div class="mode-badge">⚙ Admin Portal</div>
+  <div class="mode-badge">&#128203; DOA Portal</div>
   <nav class="nav">
     <div class="nav-section">Overview</div>
-    <a href="{% url 'admin_dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">
-      <span class="nav-icon"></span> Dashboard
+    <a href="{% url 'doa_dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">
+      <span class="nav-icon">&#128200;</span> Dashboard
     </a>
     <div class="nav-section">Management</div>
-    <a href="{% url 'admin_users' %}" class="{% block nav_users %}{% endblock %}">
-      <span class="nav-icon"></span> Users
+    <a href="{% url 'doa_users' %}" class="{% block nav_users %}{% endblock %}">
+      <span class="nav-icon">&#128101;</span> Users
     </a>
-    <a href="{% url 'admin_courses' %}" class="{% block nav_courses %}{% endblock %}">
-      <span class="nav-icon"></span> Courses
-    </a>
-    <a href="{% url 'admin_assessments' %}" class="{% block nav_assessments %}{% endblock %}">
-      <span class="nav-icon"></span> Assessments
-    </a>
-    <a href="{% url 'admin_submissions' %}" class="{% block nav_submissions %}{% endblock %}">
-      <span class="nav-icon"></span> Submissions
+    <a href="{% url 'doa_courses' %}" class="{% block nav_courses %}{% endblock %}">
+      <span class="nav-icon">&#128218;</span> Courses
     </a>
   </nav>
   <div class="sidebar-footer">
     <div class="user-info">
-      <div class="user-avatar">A</div>
+      <div class="user-avatar">D</div>
       <div>
         <div class="user-name">{{ request.user.full_name|default:request.user.username }}</div>
-        <div class="user-role">Administrator</div>
+        <div class="user-role">DOA</div>
       </div>
     </div>
-    <a href="{% url 'sign_out' %}" class="sign-out-btn">↪ Sign Out</a>
+    <a href="{% url 'sign_out' %}" class="sign-out-btn">&#8618; Sign Out</a>
   </div>
 </aside>
 
@@ -189,14 +182,6 @@ tbody tr:hover td { background:#fafbfc; }
 <script>
 function getCsrf() {
   return document.cookie.split(';').find(c=>c.trim().startsWith('csrftoken='))?.split('=')[1]||'';
-}
-async function apiPost(url, data) {
-  const res = await fetch(url, {
-    method:'POST',
-    headers:{'Content-Type':'application/json','X-CSRFToken':getCsrf()},
-    body:JSON.stringify(data)
-  });
-  return res.json();
 }
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }

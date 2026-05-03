@@ -43,7 +43,6 @@
           <th>Due Date</th>
           <th>Status</th>
           <th>Submissions</th>
-          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -52,7 +51,7 @@
           <td style="font-weight:600;">{{ a.title }}</td>
           <td>
             <span style="font-weight:600;color:var(--teal);">{{ a.course.code }}</span>
-            <div style="font-size:11px;color:var(--gray);">{{ a.course.faculty.full_name|default:a.course.faculty.username }}</div>
+            <div style="font-size:11px;color:var(--gray);">{% with f=a.course.faculty.first %}{{ f.full_name|default:f.username|default:"—" }}{% endwith %}</div>
           </td>
           <td>
             <span class="badge
@@ -73,15 +72,9 @@
             </span>
           </td>
           <td><span class="badge badge-gray">{{ a.submissions.count }}</span></td>
-          <td>
-            <form method="post" action="{% url 'admin_delete_assessment' a.id %}" onsubmit="return confirm('Delete this assessment?')">
-              {% csrf_token %}
-              <button type="submit" class="btn-ghost btn-sm btn" title="Delete">🗑</button>
-            </form>
-          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="8">
+        <tr><td colspan="7">
           <div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">No assessments found</div></div>
         </td></tr>
         {% endfor %}

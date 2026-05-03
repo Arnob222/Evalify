@@ -394,13 +394,17 @@
       </div>
 
       <!-- ── Grace Period / Late Submission Policy ── -->
+      <div style="margin-bottom:10px;">
+        <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+                      background:#f8fafc;border:1px solid var(--border);border-radius:8px;
+                      padding:9px 14px;font-size:13px;font-weight:600;color:var(--text);">
+          <input type="checkbox" id="enableLatePolicy" onchange="toggleLateSection()"
+                 style="accent-color:var(--teal);width:15px;height:15px;">
+          ⏰ Enable Late Submission Policy
+        </label>
+      </div>
       <div id="lateSection" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
-                  padding:16px;margin-bottom:16px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-          <span style="font-size:15px;">⏰</span>
-          <div style="font-size:13px;font-weight:700;color:#166534;">Late Submission Policy</div>
-          <span style="font-size:11px;color:var(--gray);font-weight:400;">(optional)</span>
-        </div>
+                  padding:16px;margin-bottom:16px;display:none;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group" style="margin-bottom:0;">
             <label class="form-label">Grace Period (hours after due date)</label>
@@ -469,6 +473,11 @@
 {% block scripts %}
 {% if selected_course %}
 <script>
+document.addEventListener('DOMContentLoaded', function() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('aDue').min = today;
+});
+
 const ALL_PLOS   = JSON.parse(document.getElementById('ploData').textContent);
 const COURSE_CLOS = JSON.parse(document.getElementById('courseClosData').textContent);
 let qCount = 0;
@@ -496,10 +505,29 @@ function setVisibility(vis) {
 // ── Banner ────────────────────────────────────────────────────────────────
 const NO_LATE_TYPES = new Set(['quiz', 'mid', 'final', 'ct']);
 
+function toggleLateSection() {
+  const enabled = document.getElementById('enableLatePolicy').checked;
+  const type    = document.getElementById('typeSelect').value;
+  const sec     = document.getElementById('lateSection');
+  sec.style.display = (enabled && !NO_LATE_TYPES.has(type)) ? '' : 'none';
+  if (!enabled) {
+    document.getElementById('aGraceHours').value  = 0;
+    document.getElementById('aMaxLateDays').value = 0;
+    document.getElementById('aDeductValue').value = 0;
+    document.getElementById('gracePolicyPreview').style.display = 'none';
+  }
+}
+
 function onTypeChange() {
   const type = document.getElementById('typeSelect').value;
-  document.getElementById('lateSection').style.display =
-    NO_LATE_TYPES.has(type) ? 'none' : '';
+  const enabled = document.getElementById('enableLatePolicy').checked;
+  // If this type doesn't support late policy, hide section and uncheck toggle
+  if (NO_LATE_TYPES.has(type)) {
+    document.getElementById('enableLatePolicy').checked = false;
+    document.getElementById('lateSection').style.display = 'none';
+  } else if (enabled) {
+    document.getElementById('lateSection').style.display = '';
+  }
   setVisibility(type === 'assignment' ? 'published' : 'draft');
 }
 
@@ -871,6 +899,9 @@ async function openEditModal(id) {
   document.getElementById('aMaxLateDays').value  = d.max_late_days;
   document.getElementById('aDeductType').value   = d.late_deduction_type;
   document.getElementById('aDeductValue').value  = d.late_deduction_value;
+  const hasLate = (d.grace_period_hours > 0 || d.max_late_days > 0 || d.late_deduction_value > 0);
+  document.getElementById('enableLatePolicy').checked = hasLate;
+  toggleLateSection();
   updateGracePreview();
 
   document.getElementById('questionsContainer').innerHTML = '';

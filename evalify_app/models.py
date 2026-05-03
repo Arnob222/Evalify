@@ -9,6 +9,7 @@ class User(AbstractUser):
         ('faculty', 'Faculty'),
         ('student', 'Student'),
         ('admin', 'Admin'),
+        ('doa', 'DOA'),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='')
     full_name = models.CharField(max_length=200, blank=True)
@@ -32,7 +33,8 @@ class Course(models.Model):
     description = models.TextField(blank=True)
     credit_hours = models.IntegerField(default=3)
     semester = models.CharField(max_length=50, default='Fall 2025')
-    faculty = models.ForeignKey(User, on_delete=models.CASCADE, related_name='courses')
+    faculty = models.ManyToManyField(User, related_name='courses', blank=True)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     enrollment_code = models.CharField(max_length=8, unique=True, blank=True, default='')
     is_archived = models.BooleanField(default=False)

@@ -1,0 +1,295 @@
+{% extends 'doa_portal/base.html' %}
+{% block nav_courses %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Courses</div>
+    <div class="page-sub">Create, manage, and assign faculty to courses</div>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('createCourseModal')">+ Create Course</button>
+</div>
+
+<div class="filter-bar">
+  <div class="search-box" style="flex:1;max-width:320px;">
+    <span class="search-icon">🔍</span>
+    <input type="text" class="form-control" id="searchInput" placeholder="Search course name or code…" oninput="filterTable()">
+  </div>
+  <select class="form-control" id="semFilter" style="width:180px;" onchange="filterTable()">
+    <option value="">All Semesters</option>
+    {% for sem in semesters %}
+    <option value="{{ sem }}">{{ sem }}</option>
+    {% endfor %}
+  </select>
+  <select class="form-control" id="activeFilter" style="width:140px;" onchange="filterTable()">
+    <option value="">All Status</option>
+    <option value="active">Active</option>
+    <option value="inactive">Inactive</option>
+  </select>
+  <span style="font-size:13px;color:var(--gray);margin-left:4px;">{{ courses|length }} courses</span>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table id="coursesTable">
+      <thead>
+        <tr>
+          <th>Course</th>
+          <th>Assigned Faculty</th>
+          <th>Semester</th>
+          <th>Students</th>
+          <th>Assessments</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in courses %}
+        <tr data-name="{{ c.code|lower }} {{ c.name|lower }}" data-sem="{{ c.semester }}" data-active="{% if c.is_active %}active{% else %}inactive{% endif %}">
+          <td>
+            <div style="font-weight:700;color:var(--indigo);">{{ c.code }}</div>
+            <div style="font-size:12px;color:var(--text);">{{ c.name }}</div>
+            <div style="font-size:11px;color:var(--light);">{{ c.credit_hours }} Cr &nbsp;·&nbsp; <span style="font-family:monospace;letter-spacing:1px;">{{ c.enrollment_code }}</span></div>
+          </td>
+          <td>
+            {% for f in c.faculty.all %}
+              <span style="display:inline-block;background:var(--indigo-light);color:var(--indigo-dark);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;margin:1px 2px;">{{ f.full_name|default:f.username }}</span>
+            {% empty %}
+              <span style="color:var(--light);font-size:12px;font-style:italic;">Unassigned</span>
+            {% endfor %}
+          </td>
+          <td><span class="badge badge-gray">{{ c.semester }}</span></td>
+          <td><span class="badge badge-blue">{{ c.enrollments.count }}</span></td>
+          <td><span class="badge badge-indigo">{{ c.assessments.count }}</span></td>
+          <td>
+            {% if c.is_active %}
+              <span class="badge badge-green">Active</span>
+            {% else %}
+              <span class="badge badge-red">Inactive</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+              <!-- Reassign Faculty button -->
+              <button class="btn btn-outline btn-sm"
+                onclick="openAssignModal({{ c.id }}, '{{ c.code }}', [{% for f in c.faculty.all %}{{ f.id }}{% if not forloop.last %},{% endif %}{% endfor %}])">
+                Re-Assign
+              </button>
+              <!-- Activate / Deactivate -->
+              <form method="post" action="{% url 'doa_toggle_course_active' c.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm {% if c.is_active %}btn-danger{% else %}btn-outline{% endif %}">
+                  {% if c.is_active %}Deactivate{% else %}Activate{% endif %}
+                </button>
+              </form>
+              <!-- Delete -->
+              <form method="post" action="{% url 'doa_delete_course' c.id %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="button" class="btn btn-sm"
+                  style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-weight:600;"
+                  data-name="{{ c.code }}: {{ c.name }}"
+                  onclick="openDeleteConfirm(this.closest('form'), this.dataset.name)">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">
+          <div class="empty-state">
+            <div class="empty-icon">📚</div>
+            <div class="empty-title">No courses yet</div>
+            <div class="empty-sub">Use the Create Course button to add the first course.</div>
+          </div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-head" style="border-bottom:none;padding-bottom:0;">
+      <span></span>
+      <button class="modal-close" onclick="closeModal('deleteModal')">&times;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding-top:8px;">
+      <div style="width:64px;height:64px;border-radius:50%;background:#fef2f2;border:2px solid #fecaca;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:28px;">🗑</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:10px;color:var(--text);">Delete Permanently?</div>
+      <div style="font-size:13.5px;color:var(--gray);line-height:1.6;">
+        You are about to delete<br>
+        <span id="deleteCourseNameSpan" style="font-weight:700;color:var(--text);"></span>
+      </div>
+      <div style="margin-top:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:12px;color:#b91c1c;font-weight:600;">
+        All assessments, questions, and submissions for this course will be permanently removed.
+      </div>
+    </div>
+    <div style="text-align:center;padding:8px 24px 24px;">
+      <button type="button" class="btn btn-outline" style="min-width:120px;margin-right:8px;" onclick="closeModal('deleteModal')">Cancel</button>
+      <button type="button" id="deleteCourseConfirmBtn" class="btn" style="min-width:120px;background:#dc2626;color:#fff;font-weight:700;">Yes, Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Create Course Modal ── -->
+<div class="modal-overlay" id="createCourseModal">
+  <div class="modal" style="max-width:580px;">
+    <div class="modal-head">
+      <span class="modal-title">Create New Course</span>
+      <button class="modal-close" onclick="closeModal('createCourseModal')">&times;</button>
+    </div>
+    <form method="post" action="{% url 'doa_create_course' %}">
+      {% csrf_token %}
+      <div class="modal-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label class="form-label">Course Code *</label>
+            <input type="text" name="code" class="form-control" required placeholder="e.g. CSE-313">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Credit Hours</label>
+            <input type="number" name="credit_hours" class="form-control" value="3" min="1" max="6">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Course Name *</label>
+          <input type="text" name="name" class="form-control" required placeholder="e.g. Software Engineering">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control" style="min-height:70px;" placeholder="Optional description…"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Semester</label>
+          <select name="semester" class="form-control">
+            <option>Fall 2024</option>
+            <option>Spring 2025</option>
+            <option selected>Fall 2025</option>
+            <option>Spring 2026</option>
+            <option>Fall 2026</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assign Faculty</label>
+          {% if faculty_list %}
+          <div style="border:1px solid var(--border);border-radius:7px;max-height:180px;overflow-y:auto;padding:10px 14px;background:#fafbfc;">
+            {% for f in faculty_list %}
+            <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px;">
+              <input type="checkbox" name="faculty_ids" value="{{ f.id }}" style="accent-color:var(--indigo);width:15px;height:15px;">
+              <span style="font-weight:600;">{{ f.full_name|default:f.username }}</span>
+              <span style="color:var(--gray);font-size:11px;">{{ f.email }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <div class="form-hint">Select one or more faculty members for this course.</div>
+          {% else %}
+          <div style="background:#fef9c3;border:1px solid #fde047;border-radius:7px;padding:10px 14px;font-size:13px;color:#854d0e;">
+            No faculty accounts found. Create faculty users first.
+          </div>
+          {% endif %}
+        </div>
+        <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:7px;padding:10px 14px;font-size:12px;color:#3730a3;">
+          A unique enrollment code is auto-generated. Students use it to self-enroll.
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-outline" onclick="closeModal('createCourseModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Course</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- ── Assign / Reassign Faculty Modal ── -->
+<div class="modal-overlay" id="assignModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <span class="modal-title" id="assignModalTitle">Assign Faculty</span>
+      <button class="modal-close" onclick="closeModal('assignModal')">&times;</button>
+    </div>
+    <form method="post" id="assignForm" action="#">
+      {% csrf_token %}
+      <div class="modal-body">
+        <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:7px;padding:10px 14px;font-size:12px;color:#3730a3;margin-bottom:14px;">
+          All existing content (CLOs, PLOs, assessments, materials, announcements) is preserved when reassigning faculty.
+        </div>
+        {% if faculty_list %}
+        <div class="form-group">
+          <label class="form-label">Select Faculty</label>
+          <div id="assignFacultyList"
+               style="border:1px solid var(--border);border-radius:7px;max-height:220px;overflow-y:auto;padding:10px 14px;background:#fafbfc;">
+            {% for f in faculty_list %}
+            <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:13px;">
+              <input type="checkbox" name="faculty_ids" value="{{ f.id }}"
+                     class="assign-cb" style="accent-color:var(--indigo);width:15px;height:15px;">
+              <div>
+                <span style="font-weight:600;">{{ f.full_name|default:f.username }}</span>
+                <span style="color:var(--gray);font-size:11px;margin-left:6px;">{{ f.email }}</span>
+              </div>
+            </label>
+            {% endfor %}
+          </div>
+          <div class="form-hint">Uncheck all to remove faculty assignment.</div>
+        </div>
+        {% else %}
+        <div style="background:#fef9c3;border:1px solid #fde047;border-radius:7px;padding:12px;font-size:13px;color:#854d0e;">
+          No faculty accounts found.
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-outline" onclick="closeModal('assignModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _pendingDeleteForm = null;
+function openDeleteConfirm(form, name) {
+  _pendingDeleteForm = form;
+  document.getElementById('deleteCourseNameSpan').textContent = name;
+  openModal('deleteModal');
+}
+document.getElementById('deleteCourseConfirmBtn').addEventListener('click', function() {
+  if (_pendingDeleteForm) _pendingDeleteForm.submit();
+});
+
+function filterTable() {
+  const q      = document.getElementById('searchInput').value.toLowerCase();
+  const sem    = document.getElementById('semFilter').value;
+  const active = document.getElementById('activeFilter').value;
+  document.querySelectorAll('#coursesTable tbody tr').forEach(row => {
+    const name = row.dataset.name   || '';
+    const s    = row.dataset.sem    || '';
+    const a    = row.dataset.active || '';
+    row.style.display = (
+      (!q      || name.includes(q)) &&
+      (!sem    || s === sem) &&
+      (!active || a === active)
+    ) ? '' : 'none';
+  });
+}
+
+function openAssignModal(courseId, courseCode, currentFacultyIds) {
+  document.getElementById('assignModalTitle').textContent = 'Assign Faculty — ' + courseCode;
+  document.getElementById('assignForm').action = '/doa-portal/courses/' + courseId + '/assign-faculty/';
+
+  // Reset and pre-check current faculty
+  document.querySelectorAll('.assign-cb').forEach(cb => {
+    cb.checked = currentFacultyIds.includes(parseInt(cb.value));
+  });
+
+  openModal('assignModal');
+}
+</script>
+{% endblock %}

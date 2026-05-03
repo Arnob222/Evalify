@@ -102,6 +102,19 @@ urlpatterns = [
     path('admin-portal/materials/<int:material_id>/delete/', views.admin_delete_material, name='admin_delete_material'),
 
 
+# DOA Portal
+    path('doa-portal/', views.doa_dashboard, name='doa_dashboard'),
+    path('doa-portal/users/', views.doa_users, name='doa_users'),
+    path('doa-portal/users/create/', views.doa_create_user, name='doa_create_user'),
+    path('doa-portal/users/<int:user_id>/edit/', views.doa_edit_user, name='doa_edit_user'),
+    path('doa-portal/users/<int:user_id>/toggle/', views.doa_toggle_user, name='doa_toggle_user'),
+    path('doa-portal/users/<int:user_id>/delete/', views.doa_delete_user, name='doa_delete_user'),
+    path('doa-portal/courses/', views.doa_courses, name='doa_courses'),
+    path('doa-portal/courses/create/', views.doa_create_course, name='doa_create_course'),
+    path('doa-portal/courses/<int:course_id>/assign-faculty/', views.doa_assign_faculty, name='doa_assign_faculty'),
+    path('doa-portal/courses/<int:course_id>/toggle-active/', views.doa_toggle_course_active, name='doa_toggle_course_active'),
+    path('doa-portal/courses/<int:course_id>/delete/', views.doa_delete_course, name='doa_delete_course'),
+
 # Assessment Download
     path('faculty/assignments/<int:assessment_id>/download/<str:fmt>/', views.download_assessment, name='download_assessment'),
 

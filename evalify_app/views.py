@@ -27,6 +27,8 @@ def home(request):
         return redirect('student_dashboard')
     elif request.user.role == 'admin':
         return redirect('admin_dashboard')
+    elif request.user.role == 'doa':
+        return redirect('doa_dashboard')
     return render(request, 'homepage.html')
 
 
@@ -137,7 +139,7 @@ def student_required(view_func):
 @faculty_required
 def faculty_dashboard(request):
     now = timezone.now()
-    courses = Course.objects.filter(faculty=request.user).prefetch_related('enrollments', 'clos')
+    courses = Course.objects.filter(faculty=request.user, is_active=True).prefetch_related('enrollments', 'clos')
     assessments = Assessment.objects.filter(course__in=courses)
     pending_subs = Submission.objects.filter(assessment__in=assessments, status='submitted')
     flagged_subs = Submission.objects.filter(assessment__in=assessments, status='flagged')
@@ -175,7 +177,7 @@ def faculty_dashboard(request):
 
 @faculty_required
 def faculty_enrolled_students(request):
-    courses = Course.objects.filter(faculty=request.user).prefetch_related(
+    courses = Course.objects.filter(faculty=request.user, is_active=True).prefetch_related(
         'enrollments', 'enrollments__student'
     ).order_by('code')
     search = request.GET.get('q', '').strip()
@@ -200,7 +202,7 @@ def faculty_enrolled_students(request):
 
 @faculty_required
 def faculty_courses(request):
-    all_courses = Course.objects.filter(faculty=request.user).prefetch_related(
+    all_courses = Course.objects.filter(faculty=request.user, is_active=True).prefetch_related(
         'clos', 'clos__plos', 'enrollments', 'enrollments__student'
     )
     active_courses = []
@@ -217,7 +219,7 @@ def faculty_courses(request):
             active_courses.append(course)
 
     all_enrollments = Enrollment.objects.filter(
-        course__faculty=request.user
+        course__faculty=request.user, course__is_active=True
     ).select_related('student', 'course').order_by('student__full_name', 'course__code')
 
     plos = PLO.objects.all()
@@ -233,7 +235,7 @@ def faculty_courses(request):
 def archive_course(request, course_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=400)
-    course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     course.is_archived = not course.is_archived
     course.save()
     return JsonResponse({'success': True, 'is_archived': course.is_archived})
@@ -242,22 +244,12 @@ def archive_course(request, course_id):
 
 @faculty_required
 def add_course(request):
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        course = Course.objects.create(
-            code=data['code'], name=data['name'],
-            description=data.get('description', ''),
-            credit_hours=int(data.get('credit_hours', 3)),
-            semester=data.get('semester', 'Fall 2025'),
-            faculty=request.user
-        )
-        return JsonResponse({'success': True, 'id': course.id})
-    return JsonResponse({'error': 'POST required'}, status=400)
+    return JsonResponse({'error': 'Course creation is managed by DOA.'}, status=403)
 
 
 @faculty_required
 def add_clo(request, course_id):
-    course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     if request.method == 'POST':
         data = json.loads(request.body)
         count = course.clos.count() + 1
@@ -281,14 +273,14 @@ def delete_clo(request, clo_id):
 
 @faculty_required
 def get_course_clos(request, course_id):
-    course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     clos = list(course.clos.values('id', 'code', 'description', 'bloom_level'))
     return JsonResponse({'clos': clos})
 
 
 @faculty_required
 def add_student_to_course(request, course_id):
-    course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     if request.method == 'POST':
         data = json.loads(request.body)
         try:
@@ -302,13 +294,13 @@ def add_student_to_course(request, course_id):
 
 @faculty_required
 def remove_student_from_course(request, course_id, student_id):
-    course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     if request.method == 'POST':
         Enrollment.objects.filter(student_id=student_id, course=course).delete()
         return JsonResponse({'success': True})
     return JsonResponse({'error': 'POST required'}, status=400)
 def add_students_by_range(request, course_id):
-    course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=400)
     data = json.loads(request.body)
@@ -343,7 +335,7 @@ def add_students_by_range(request, course_id):
 
 @faculty_required
 def faculty_assessments(request):
-    courses = Course.objects.filter(faculty=request.user)
+    courses = Course.objects.filter(faculty=request.user, is_active=True)
     assessments = Assessment.objects.filter(course__in=courses).prefetch_related(
         'questions__clos__plos'
     ).order_by('-created_at')
@@ -356,7 +348,7 @@ def faculty_assessments(request):
 def create_assessment(request):
     if request.method == 'POST':
         data = json.loads(request.body)
-        course = get_object_or_404(Course, id=data['course_id'], faculty=request.user)
+        course = get_object_or_404(Course, id=data['course_id'], faculty=request.user, is_active=True)
         assessment = Assessment.objects.create(
             course=course, title=data['title'],
             description=data.get('description', ''),
@@ -379,7 +371,7 @@ def create_assessment(request):
 
 @faculty_required
 def faculty_grading(request):
-    courses = Course.objects.filter(faculty=request.user)
+    courses = Course.objects.filter(faculty=request.user, is_active=True)
 
     course_id = request.GET.get('course')
     if not course_id:
@@ -404,7 +396,7 @@ def faculty_grading(request):
         })
 
     # Level 2 — submissions for selected course
-    selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+    selected_course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     assessments = Assessment.objects.filter(course=selected_course)
     submissions = Submission.objects.filter(
         assessment__in=assessments
@@ -526,7 +518,7 @@ def grade_submission(request, sub_id):
 
 @faculty_required
 def faculty_analytics(request):
-    courses = Course.objects.filter(faculty=request.user)
+    courses = Course.objects.filter(faculty=request.user, is_active=True)
     selected_course = None
     grade_dist = []
     clo_attainment = []
@@ -537,7 +529,7 @@ def faculty_analytics(request):
 
     course_id = request.GET.get('course')
     if course_id:
-        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     elif courses.exists():
         selected_course = courses.first()
 
@@ -766,7 +758,7 @@ def faculty_analytics(request):
 
 @faculty_required
 def faculty_escar(request):
-    courses = Course.objects.filter(faculty=request.user)
+    courses = Course.objects.filter(faculty=request.user, is_active=True)
     selected_course = None
     clos_data = []
     plos_data = []
@@ -777,7 +769,7 @@ def faculty_escar(request):
 
     course_id = request.GET.get('course')
     if course_id:
-        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     elif courses.exists():
         selected_course = courses.first()
 
@@ -895,7 +887,7 @@ def save_escar_plan(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=400)
     data = json.loads(request.body)
-    course = get_object_or_404(Course, id=data['course_id'], faculty=request.user)
+    course = get_object_or_404(Course, id=data['course_id'], faculty=request.user, is_active=True)
     plan_type = data.get('type')
     plan_text = data.get('action_plan', '')
     if plan_type == 'clo':
@@ -915,7 +907,7 @@ def save_escar_plan(request):
 
 @faculty_required
 def faculty_announcements(request):
-    courses = Course.objects.filter(faculty=request.user)
+    courses = Course.objects.filter(faculty=request.user, is_active=True)
     announcements = Announcement.objects.filter(
         course__in=courses
     ).select_related('course').order_by('-created_at')
@@ -928,7 +920,7 @@ def faculty_announcements(request):
 def create_announcement(request):
     if request.method == 'POST':
         data = json.loads(request.body)
-        course = get_object_or_404(Course, id=data['course_id'], faculty=request.user)
+        course = get_object_or_404(Course, id=data['course_id'], faculty=request.user, is_active=True)
         ann = Announcement.objects.create(
             course=course, title=data['title'], content=data['content'],
             priority=data.get('priority', 'medium'), created_by=request.user
@@ -1260,11 +1252,11 @@ def student_notifications(request):
 
 @faculty_required
 def faculty_materials(request):
-    courses = Course.objects.filter(faculty=request.user)
+    courses = Course.objects.filter(faculty=request.user, is_active=True)
  
     course_id = request.GET.get('course')
     if course_id:
-        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
         materials = StudyMaterial.objects.filter(
             course=selected_course
         ).order_by('-uploaded_at')
@@ -1297,7 +1289,7 @@ def upload_material(request):
         video_url     = request.POST.get('video_url', '').strip()
         uploaded_file = request.FILES.get('file')
  
-        course = get_object_or_404(Course, id=course_id, faculty=request.user)
+        course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
  
         # ── Permission check ──
         if not title:
@@ -1408,13 +1400,13 @@ def add_plo(request):
 
 @faculty_required
 def faculty_assignments(request):
-    courses = Course.objects.filter(faculty=request.user)
+    courses = Course.objects.filter(faculty=request.user, is_active=True)
     plos = PLO.objects.all()
 
     course_id = request.GET.get('course')
     if course_id:
         # Course detail view 
-        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
         base_qs = Assessment.objects.filter(course=selected_course).select_related('course').prefetch_related(
             'questions', 'questions__clos', 'questions__plos'
         )
@@ -1462,7 +1454,7 @@ def _decode_image(b64_str, prefix='img'):
 def create_assignment(request):
     if request.method == 'POST':
         data = json.loads(request.body)
-        course = get_object_or_404(Course, id=data['course_id'], faculty=request.user)
+        course = get_object_or_404(Course, id=data['course_id'], faculty=request.user, is_active=True)
         assessment_type = data.get('assessment_type', 'assignment')
         # Faculty can explicitly choose publish or draft; assignment defaults to publish
         default_publish = assessment_type == 'assignment'
@@ -1817,12 +1809,12 @@ def unsubmit_assignment(request, assignment_id):
 
 @faculty_required
 def faculty_marks_sheet(request):
-    courses = Course.objects.filter(faculty=request.user)
+    courses = Course.objects.filter(faculty=request.user, is_active=True)
     selected_course = None
 
     course_id = request.GET.get('course')
     if course_id:
-        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user)
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     elif courses.exists():
         selected_course = courses.first()
 
@@ -2027,7 +2019,7 @@ def update_question_grade(request):
 
     if col_type == 'sub':
         sub_q = get_object_or_404(SubQuestion, id=data.get('entity_id'))
-        if sub_q.question.assessment.course.faculty != request.user:
+        if request.user not in sub_q.question.assessment.course.faculty.all():
             return JsonResponse({'error': 'Forbidden'}, status=403)
         marks = min(max(marks, 0), sub_q.max_marks)
         submission, _ = Submission.objects.get_or_create(
@@ -2095,7 +2087,7 @@ def mark_all_read(request):
 @faculty_required
 def faculty_question_bank(request):
     from .models import PastPaper
-    courses = Course.objects.filter(faculty=request.user)
+    courses = Course.objects.filter(faculty=request.user, is_active=True)
     papers  = PastPaper.objects.filter(
         uploaded_by=request.user
     ).prefetch_related('questions', 'allowed_courses')
@@ -2176,7 +2168,7 @@ def create_past_paper(request):
         course_ids = data.get('allowed_course_ids', [])
         if course_ids:
             paper.allowed_courses.set(
-                Course.objects.filter(id__in=course_ids, faculty=request.user)
+                Course.objects.filter(id__in=course_ids, faculty=request.user, is_active=True)
             )
         total = 0
         for i, q in enumerate(data.get('questions', []), 1):
@@ -2472,7 +2464,7 @@ def admin_create_user(request):
         if role == 'admin':
             user.is_staff = True
             user.save()
-        messages.success(request, f'User {full_name} created successfully.')
+        messages.success(request, f'User {full_name} ({role}) created successfully.')
     return redirect('admin_users')
 
 
@@ -2518,7 +2510,7 @@ def admin_delete_user(request, user_id):
 
 @admin_required
 def admin_courses(request):
-    courses = Course.objects.select_related('faculty').prefetch_related('enrollments', 'assessments').order_by('-created_at')
+    courses = Course.objects.prefetch_related('faculty', 'enrollments', 'assessments').order_by('-created_at')
     semesters = Course.objects.values_list('semester', flat=True).distinct().order_by('semester')
     return render(request, 'admin_portal/courses.html', {
         'courses': courses, 'semesters': semesters,
@@ -2537,7 +2529,7 @@ def admin_delete_course(request, course_id):
 
 @admin_required
 def admin_assessments(request):
-    assessments = Assessment.objects.select_related('course__faculty').prefetch_related('submissions').order_by('-created_at')
+    assessments = Assessment.objects.select_related('course').prefetch_related('course__faculty', 'submissions').order_by('-created_at')
     return render(request, 'admin_portal/assessments.html', {'assessments': assessments})
 
 
@@ -2587,6 +2579,169 @@ def admin_delete_material(request, material_id):
     return redirect('admin_materials')
 
 
+# DOA PORTAL VIEWS
+
+def doa_required(view_func):
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('sign_in_html')
+        if request.user.role != 'doa':
+            return redirect('home')
+        return view_func(request, *args, **kwargs)
+    wrapper.__name__ = view_func.__name__
+    return wrapper
+
+
+@doa_required
+def doa_dashboard(request):
+    from datetime import date as dt_date
+    return render(request, 'doa_portal/dashboard.html', {
+        'today':          dt_date.today().strftime('%B %d, %Y'),
+        'total_users':    User.objects.count(),
+        'total_faculty':  User.objects.filter(role='faculty').count(),
+        'total_students': User.objects.filter(role='student').count(),
+        'total_courses':  Course.objects.count(),
+        'total_enrollments': Enrollment.objects.count(),
+        'recent_users':   User.objects.order_by('-date_joined')[:6],
+        'recent_courses': Course.objects.prefetch_related('enrollments').order_by('-created_at')[:6],
+    })
+
+
+@doa_required
+def doa_users(request):
+    users = User.objects.all().order_by('-date_joined')
+    return render(request, 'doa_portal/users.html', {'users': users})
+
+
+@doa_required
+def doa_create_user(request):
+    if request.method == 'POST':
+        full_name = request.POST.get('full_name', '').strip()
+        email     = request.POST.get('email', '').strip()
+        password  = request.POST.get('password', '')
+        role      = request.POST.get('role', 'student')
+        if role not in ('faculty', 'student'):
+            role = 'student'
+        if User.objects.filter(email=email).exists():
+            messages.error(request, 'Email already registered.')
+            return redirect('doa_users')
+        if len(password) < 8:
+            messages.error(request, 'Password must be at least 8 characters.')
+            return redirect('doa_users')
+        username = email.split('@')[0]
+        base = username; i = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base}{i}"; i += 1
+        User.objects.create_user(
+            username=username, email=email, password=password,
+            full_name=full_name, role=role,
+        )
+        messages.success(request, f'User {full_name} created successfully.')
+    return redirect('doa_users')
+
+
+@doa_required
+def doa_edit_user(request, user_id):
+    u = get_object_or_404(User, id=user_id)
+    if request.method == 'POST':
+        u.full_name = request.POST.get('full_name', u.full_name).strip()
+        u.email     = request.POST.get('email', u.email).strip()
+        new_role    = request.POST.get('role', u.role)
+        if new_role in ('faculty', 'student'):
+            u.role = new_role
+        pw = request.POST.get('password', '').strip()
+        if pw:
+            if len(pw) < 8:
+                messages.error(request, 'Password must be at least 8 characters.')
+                return redirect('doa_users')
+            u.set_password(pw)
+        u.save()
+        messages.success(request, f'User {u.full_name} updated.')
+    return redirect('doa_users')
+
+
+@doa_required
+def doa_toggle_user(request, user_id):
+    if request.method == 'POST':
+        u = get_object_or_404(User, id=user_id)
+        u.is_active = not u.is_active
+        u.save()
+        status = 'activated' if u.is_active else 'deactivated'
+        messages.success(request, f'User {u.full_name or u.username} {status}.')
+    return redirect('doa_users')
+
+
+@doa_required
+def doa_delete_user(request, user_id):
+    if request.method == 'POST':
+        u = get_object_or_404(User, id=user_id)
+        name = u.full_name or u.username
+        u.delete()
+        messages.success(request, f'User {name} deleted.')
+    return redirect('doa_users')
+
+
+@doa_required
+def doa_courses(request):
+    courses = Course.objects.prefetch_related('faculty', 'enrollments', 'assessments').order_by('-created_at')
+    semesters = Course.objects.values_list('semester', flat=True).distinct().order_by('semester')
+    faculty_list = User.objects.filter(role='faculty').order_by('full_name')
+    return render(request, 'doa_portal/courses.html', {
+        'courses': courses, 'semesters': semesters, 'faculty_list': faculty_list,
+    })
+
+
+@doa_required
+def doa_create_course(request):
+    if request.method == 'POST':
+        code         = request.POST.get('code', '').strip()
+        name         = request.POST.get('name', '').strip()
+        description  = request.POST.get('description', '').strip()
+        credit_hours = int(request.POST.get('credit_hours', 3) or 3)
+        semester     = request.POST.get('semester', 'Fall 2025')
+        faculty_ids  = request.POST.getlist('faculty_ids')
+        if not code or not name:
+            messages.error(request, 'Course code and name are required.')
+            return redirect('doa_courses')
+        course = Course.objects.create(
+            code=code, name=name, description=description,
+            credit_hours=credit_hours, semester=semester,
+        )
+        if faculty_ids:
+            course.faculty.set(User.objects.filter(id__in=faculty_ids, role='faculty'))
+        messages.success(request, f'Course {code} created successfully.')
+    return redirect('doa_courses')
+
+
+@doa_required
+def doa_assign_faculty(request, course_id):
+    if request.method == 'POST':
+        c = get_object_or_404(Course, id=course_id)
+        faculty_ids = request.POST.getlist('faculty_ids')
+        c.faculty.set(User.objects.filter(id__in=faculty_ids, role='faculty'))
+        messages.success(request, f'Faculty assignment for {c.code} updated. All existing content is preserved.')
+    return redirect('doa_courses')
+
+
+@doa_required
+def doa_toggle_course_active(request, course_id):
+    if request.method == 'POST':
+        c = get_object_or_404(Course, id=course_id)
+        c.is_active = not c.is_active
+        c.save()
+        status = 'activated' if c.is_active else 'deactivated'
+        messages.success(request, f'Course {c.code} {status}.')
+    return redirect('doa_courses')
+
+
+@doa_required
+def doa_delete_course(request, course_id):
+    if request.method == 'POST':
+        c = get_object_or_404(Course, id=course_id)
+        name = c.code
+        c.delete()
+        messages.success(request, f'Course {name} deleted.')
+    return redirect('doa_courses')
 
 
 # ── Assessment Download (PDF / DOCX) ─────────────────────────────────────────

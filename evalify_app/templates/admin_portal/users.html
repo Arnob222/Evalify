@@ -21,6 +21,7 @@
     <option value="faculty">Faculty</option>
     <option value="student">Student</option>
     <option value="admin">Admin</option>
+    <option value="doa">DOA</option>
   </select>
   <span style="font-size:13px;color:var(--gray);margin-left:4px;">{{ users|length }} users</span>
 </div>
@@ -35,7 +36,6 @@
           <th>Role</th>
           <th>Joined</th>
           <th>Status</th>
-          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -54,7 +54,7 @@
           </td>
           <td style="font-size:13px;">{{ u.email }}</td>
           <td>
-            <span class="badge {% if u.role == 'faculty' %}badge-teal{% elif u.role == 'student' %}badge-blue{% elif u.role == 'admin' %}badge-red{% else %}badge-gray{% endif %}">
+            <span class="badge {% if u.role == 'faculty' %}badge-teal{% elif u.role == 'student' %}badge-blue{% elif u.role == 'admin' %}badge-red{% elif u.role == 'doa' %}badge-purple{% else %}badge-gray{% endif %}">
               {{ u.role|default:"—" }}
             </span>
           </td>
@@ -66,26 +66,9 @@
             <span class="badge badge-red">Inactive</span>
             {% endif %}
           </td>
-          <td>
-            <div style="display:flex;gap:6px;">
-              <button class="btn btn-outline btn-sm" onclick="openEditModal({{ u.id }}, '{{ u.full_name|default:u.username }}', '{{ u.email }}', '{{ u.role }}')">Edit</button>
-              {% if not u.is_superuser %}
-              <form method="post" action="{% url 'admin_toggle_user' u.id %}" style="display:inline;">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-sm {% if u.is_active %}btn-danger{% else %}btn-outline{% endif %}">
-                  {% if u.is_active %}Deactivate{% else %}Activate{% endif %}
-                </button>
-              </form>
-              <form method="post" action="{% url 'admin_delete_user' u.id %}" style="display:inline;" onsubmit="return confirm('Delete this user permanently?')">
-                {% csrf_token %}
-                <button type="submit" class="btn-ghost btn-sm btn">🗑</button>
-              </form>
-              {% endif %}
-            </div>
-          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6">
+        <tr><td colspan="5">
           <div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">No users found</div></div>
         </td></tr>
         {% endfor %}
@@ -119,6 +102,7 @@
             <option value="faculty">Faculty</option>
             <option value="student">Student</option>
             <option value="admin">Admin</option>
+            <option value="doa">DOA</option>
           </select>
         </div>
         <div class="form-group">
@@ -134,44 +118,6 @@
   </div>
 </div>
 
-<!-- Edit Modal -->
-<div class="modal-overlay" id="editModal">
-  <div class="modal">
-    <div class="modal-head">
-      <span class="modal-title">Edit User</span>
-      <button class="modal-close" onclick="closeModal('editModal')">&times;</button>
-    </div>
-    <form method="post" action="{% url 'admin_edit_user' 0 %}" id="editForm">
-      {% csrf_token %}
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">Full Name</label>
-          <input type="text" name="full_name" id="editName" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Email</label>
-          <input type="email" name="email" id="editEmail" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Role</label>
-          <select name="role" id="editRole" class="form-control">
-            <option value="faculty">Faculty</option>
-            <option value="student">Student</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">New Password <span style="font-weight:400;color:var(--light);">(leave blank to keep current)</span></label>
-          <input type="password" name="password" class="form-control" placeholder="Leave blank to keep current">
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button type="button" class="btn btn-outline" onclick="closeModal('editModal')">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save Changes</button>
-      </div>
-    </form>
-  </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -189,12 +135,6 @@ function filterTable() {
   });
 }
 
-function openEditModal(id, name, email, role) {
-  document.getElementById('editName').value  = name;
-  document.getElementById('editEmail').value = email;
-  document.getElementById('editRole').value  = role;
-  document.getElementById('editForm').action = `/admin-portal/users/${id}/edit/`;
-  openModal('editModal');
-}
+
 </script>
 {% endblock %}

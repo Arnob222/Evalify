@@ -1,0 +1,242 @@
+{% extends 'doa_portal/base.html' %}
+{% block nav_users %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Users</div>
+    <div class="page-sub">Manage faculty and student accounts</div>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('createModal')">+ Add User</button>
+</div>
+
+<div class="filter-bar">
+  <div class="search-box" style="flex:1;max-width:320px;">
+    <span class="search-icon">🔍</span>
+    <input type="text" class="form-control" id="searchInput" placeholder="Search by name or email…" oninput="filterTable()">
+  </div>
+  <select class="form-control" id="roleFilter" style="width:140px;" onchange="filterTable()">
+    <option value="">All Roles</option>
+    <option value="faculty">Faculty</option>
+    <option value="student">Student</option>
+  </select>
+  <span style="font-size:13px;color:var(--gray);margin-left:4px;">{{ users|length }} users</span>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table id="usersTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Joined</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr data-name="{{ u.full_name|lower }} {{ u.username|lower }}" data-email="{{ u.email|lower }}" data-role="{{ u.role }}">
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--indigo-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--indigo);flex-shrink:0;">
+                {{ u.full_name|default:u.username|slice:":1"|upper }}
+              </div>
+              <div>
+                <div style="font-weight:600;">{{ u.full_name|default:u.username }}</div>
+                <div style="font-size:11px;color:var(--gray);">@{{ u.username }}</div>
+              </div>
+            </div>
+          </td>
+          <td style="font-size:13px;">{{ u.email }}</td>
+          <td>
+            <span class="badge {% if u.role == 'faculty' %}badge-teal{% elif u.role == 'student' %}badge-blue{% elif u.role == 'admin' %}badge-red{% elif u.role == 'doa' %}badge-indigo{% else %}badge-gray{% endif %}">
+              {{ u.role|default:"—" }}
+            </span>
+          </td>
+          <td style="font-size:12px;color:var(--gray);">{{ u.date_joined|date:"M d, Y" }}</td>
+          <td>
+            {% if u.is_active %}
+            <span class="badge badge-green">Active</span>
+            {% else %}
+            <span class="badge badge-red">Inactive</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.role in 'faculty,student' or u.role == 'faculty' or u.role == 'student' %}
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-outline btn-sm" onclick="openEditModal({{ u.id }}, '{{ u.full_name|default:u.username }}', '{{ u.email }}', '{{ u.role }}')">Edit</button>
+              {% if not u.is_superuser %}
+              <form method="post" action="{% url 'doa_toggle_user' u.id %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm {% if u.is_active %}btn-danger{% else %}btn-outline{% endif %}">
+                  {% if u.is_active %}Deactivate{% else %}Activate{% endif %}
+                </button>
+              </form>
+              <form method="post" action="{% url 'doa_delete_user' u.id %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="button" class="btn btn-sm"
+                  style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-weight:600;"
+                  data-name="{{ u.full_name|default:u.username }}"
+                  onclick="openDeleteConfirm(this.closest('form'), this.dataset.name)">
+                  Delete
+                </button>
+              </form>
+              {% endif %}
+            </div>
+            {% else %}
+            <span style="font-size:12px;color:var(--light);">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">
+          <div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">No users found</div></div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create Modal -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">Add New User</span>
+      <button class="modal-close" onclick="closeModal('createModal')">&times;</button>
+    </div>
+    <form method="post" action="{% url 'doa_create_user' %}">
+      {% csrf_token %}
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input type="text" name="full_name" class="form-control" required placeholder="e.g. Dr. Rahim">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control" required placeholder="name@uap-bd.edu">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select name="role" class="form-control">
+            <option value="faculty">Faculty</option>
+            <option value="student">Student</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="password" class="form-control" required placeholder="Min. 8 characters">
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-outline" onclick="closeModal('createModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create User</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-head" style="border-bottom:none;padding-bottom:0;">
+      <span></span>
+      <button class="modal-close" onclick="closeModal('deleteModal')">&times;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding-top:8px;">
+      <div style="width:64px;height:64px;border-radius:50%;background:#fef2f2;border:2px solid #fecaca;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:28px;">🗑</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:10px;color:var(--text);">Delete Permanently?</div>
+      <div style="font-size:13.5px;color:var(--gray);line-height:1.6;">
+        You are about to delete<br>
+        <span id="deleteUserName" style="font-weight:700;color:var(--text);"></span>
+      </div>
+      <div style="margin-top:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:12px;color:#b91c1c;font-weight:600;">
+        This action cannot be undone.
+      </div>
+    </div>
+    <div style="text-align:center;padding:8px 24px 24px;">
+      <button type="button" class="btn btn-outline" style="min-width:120px;margin-right:8px;" onclick="closeModal('deleteModal')">Cancel</button>
+      <button type="button" id="deleteUserConfirmBtn" class="btn" style="min-width:120px;background:#dc2626;color:#fff;font-weight:700;">Yes, Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">Edit User</span>
+      <button class="modal-close" onclick="closeModal('editModal')">&times;</button>
+    </div>
+    <form method="post" action="{% url 'doa_edit_user' 0 %}" id="editForm">
+      {% csrf_token %}
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input type="text" name="full_name" id="editName" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" id="editEmail" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select name="role" id="editRole" class="form-control">
+            <option value="faculty">Faculty</option>
+            <option value="student">Student</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">New Password <span style="font-weight:400;color:var(--light);">(leave blank to keep current)</span></label>
+          <input type="password" name="password" class="form-control" placeholder="Leave blank to keep current">
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-outline" onclick="closeModal('editModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterTable() {
+  const q    = document.getElementById('searchInput').value.toLowerCase();
+  const role = document.getElementById('roleFilter').value;
+  document.querySelectorAll('#usersTable tbody tr').forEach(row => {
+    const name  = row.dataset.name  || '';
+    const email = row.dataset.email || '';
+    const r     = row.dataset.role  || '';
+    const matchQ    = !q    || name.includes(q) || email.includes(q);
+    const matchRole = !role || r === role;
+    row.style.display = (matchQ && matchRole) ? '' : 'none';
+  });
+}
+
+let _pendingDeleteForm = null;
+function openDeleteConfirm(form, name) {
+  _pendingDeleteForm = form;
+  document.getElementById('deleteUserName').textContent = name;
+  openModal('deleteModal');
+}
+document.getElementById('deleteUserConfirmBtn').addEventListener('click', function() {
+  if (_pendingDeleteForm) _pendingDeleteForm.submit();
+});
+
+function openEditModal(id, name, email, role) {
+  document.getElementById('editName').value  = name;
+  document.getElementById('editEmail').value = email;
+  const roleSelect = document.getElementById('editRole');
+  if (roleSelect.querySelector(`option[value="${role}"]`)) {
+    roleSelect.value = role;
+  }
+  document.getElementById('editForm').action = `/doa-portal/users/${id}/edit/`;
+  openModal('editModal');
+}
+</script>
+{% endblock %}
