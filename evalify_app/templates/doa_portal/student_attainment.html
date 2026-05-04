@@ -1,0 +1,172 @@
+{% extends 'doa_portal/base.html' %}
+{% block nav_students %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <a href="{% url 'doa_students' %}" class="btn btn-outline btn-sm">&#8592; Back</a>
+    <div>
+      <div class="page-title">{{ student.full_name|default:student.username }}</div>
+      <div class="page-sub">Registration ID: <strong>{{ student.username }}</strong> &nbsp;|&nbsp; {{ student.email }}</div>
+    </div>
+  </div>
+</div>
+
+{% if program_plo_attainment %}
+<!-- Program-level PLO summary -->
+<div class="panel" style="margin-bottom:24px;">
+  <div class="panel-head">
+    <span class="panel-title">Program-Level PLO Attainment</span>
+    <span style="font-size:12px;color:var(--gray);">Aggregated across all enrolled courses</span>
+  </div>
+  <div class="panel-body" style="padding:0;">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>PLO</th>
+            <th>Description</th>
+            <th>Obtained</th>
+            <th>Total</th>
+            <th>Attainment %</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in program_plo_attainment %}
+          <tr>
+            <td><span class="badge badge-indigo">{{ p.code }}</span></td>
+            <td style="font-size:12.5px;max-width:280px;">{{ p.description }}</td>
+            <td style="font-weight:600;">{{ p.obtained }}</td>
+            <td style="color:var(--gray);">{{ p.total }}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;max-width:120px;background:#e2e8f0;border-radius:20px;height:8px;overflow:hidden;">
+                  <div style="height:100%;border-radius:20px;width:{% if p.attainment > 100 %}100{% else %}{{ p.attainment }}{% endif %}%;background:{% if p.attainment >= 60 %}var(--green){% elif p.attainment >= 40 %}var(--orange){% else %}var(--red){% endif %};"></div>
+                </div>
+                <span style="font-weight:700;font-size:14px;">{{ p.attainment }}%</span>
+              </div>
+            </td>
+            <td>
+              {% if p.attainment >= 60 %}
+                <span class="badge badge-green">Attained</span>
+              {% elif p.attainment >= 40 %}
+                <span class="badge badge-orange">Partial</span>
+              {% else %}
+                <span class="badge badge-red">Not Attained</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if results %}
+{% for r in results %}
+<!-- Per-course card -->
+<div class="panel" style="margin-bottom:24px;">
+  <div class="panel-head" style="background:var(--indigo-light);border-radius:12px 12px 0 0;">
+    <div>
+      <span style="font-size:16px;font-weight:800;color:var(--indigo);">{{ r.course.code }}</span>
+      <span style="font-size:13px;color:var(--gray);margin-left:8px;">{{ r.course.name }}</span>
+      <span style="font-size:12px;color:var(--light);margin-left:8px;">{{ r.course.semester }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:13px;color:var(--gray);">Overall: <strong>{{ r.avg_pct }}%</strong></span>
+      <span class="badge {% if r.grade == 'A+' or r.grade == 'A' or r.grade == 'A-' %}badge-green{% elif r.grade == 'B+' or r.grade == 'B' or r.grade == 'B-' %}badge-teal{% elif r.grade == 'C+' or r.grade == 'C' %}badge-orange{% elif r.grade == 'D' %}badge-orange{% else %}badge-red{% endif %}" style="font-size:14px;padding:4px 12px;">
+        {{ r.grade }}
+      </span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid var(--border);">
+    <!-- CLO table -->
+    <div style="border-right:1px solid var(--border);">
+      <div style="padding:12px 16px;font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);">CLO Attainment</div>
+      {% if r.clo_results %}
+      <table>
+        <thead>
+          <tr>
+            <th>CLO</th>
+            <th>Marks</th>
+            <th>Attainment</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for clo in r.clo_results %}
+          <tr>
+            <td>
+              <span class="badge badge-teal">{{ clo.code }}</span>
+              <div style="font-size:11px;color:var(--gray);margin-top:2px;max-width:160px;">{{ clo.description|truncatechars:60 }}</div>
+            </td>
+            <td style="font-size:12.5px;white-space:nowrap;">{{ clo.obtained }}/{{ clo.total }}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div style="width:60px;background:#e2e8f0;border-radius:20px;height:6px;overflow:hidden;">
+                  <div style="height:100%;border-radius:20px;width:{% if clo.attainment > 100 %}100{% else %}{{ clo.attainment }}{% endif %}%;background:{% if clo.attainment >= 60 %}var(--green){% elif clo.attainment >= 40 %}var(--orange){% else %}var(--red){% endif %};"></div>
+                </div>
+                <span style="font-weight:600;font-size:12px;">{{ clo.attainment }}%</span>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state" style="padding:20px;">
+        <div class="empty-sub">No CLO data for this course.</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- PLO table -->
+    <div>
+      <div style="padding:12px 16px;font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);">PLO Attainment</div>
+      {% if r.plo_results %}
+      <table>
+        <thead>
+          <tr>
+            <th>PLO</th>
+            <th>Description</th>
+            <th>Attainment</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for plo in r.plo_results %}
+          <tr>
+            <td><span class="badge badge-indigo">{{ plo.code }}</span></td>
+            <td style="font-size:11px;color:var(--gray);max-width:160px;">{{ plo.description|truncatechars:60 }}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div style="width:60px;background:#e2e8f0;border-radius:20px;height:6px;overflow:hidden;">
+                  <div style="height:100%;border-radius:20px;width:{% if plo.attainment > 100 %}100{% else %}{{ plo.attainment }}{% endif %}%;background:{% if plo.attainment >= 60 %}var(--green){% elif plo.attainment >= 40 %}var(--orange){% else %}var(--red){% endif %};"></div>
+                </div>
+                <span style="font-weight:600;font-size:12px;">{{ plo.attainment }}%</span>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state" style="padding:20px;">
+        <div class="empty-sub">No PLO data for this course.</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">&#128202;</div>
+  <div class="empty-title">No attainment data</div>
+  <div class="empty-sub">This student has no graded assessments yet.</div>
+</div>
+{% endif %}
+{% endblock %}

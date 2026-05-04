@@ -97,6 +97,11 @@
                        cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--gray);">
           👥 Students ({{ course.enrollments.count }})
         </button>
+        <button onclick="switchCTab({{ course.id }},'sections')" id="ctab-sections-{{ course.id }}"
+                style="padding:12px 18px;font-size:13px;font-weight:600;border:none;background:none;
+                       cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--gray);">
+          &#128203; My Sections
+        </button>
       </div>
 
       <!-- CLOs tab -->
@@ -216,6 +221,31 @@
           No students enrolled yet. Share the enrollment code <strong>{{ course.enrollment_code }}</strong> with students.
         </div>
         {% endif %}
+      </div>
+
+      <!-- Sections tab pane -->
+      <div id="cpane-sections-{{ course.id }}" style="display:none;padding:18px 0;">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px;">My Sections in {{ course.code }}</div>
+        <div id="sec-cards-{{ course.id }}">
+        {% for sec in my_sections %}{% if sec.course_id == course.id %}
+        <div class="sec-card" style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;">
+          <div style="width:48px;height:48px;border-radius:50%;background:var(--indigo-light);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:var(--indigo);flex-shrink:0;">
+            {{ sec.name }}
+          </div>
+          <div style="flex:1;">
+            <div style="font-weight:700;font-size:14px;">Section {{ sec.name }}</div>
+            <div style="font-size:12px;color:var(--gray);">{{ sec.batch }} &nbsp;·&nbsp; {{ sec.students.count }} student{{ sec.students.count|pluralize }}</div>
+          </div>
+          <span class="badge badge-indigo">{{ sec.batch }}</span>
+        </div>
+        {% endif %}{% endfor %}
+        </div>
+        <script>
+        if(!document.getElementById('sec-cards-{{ course.id }}').querySelector('.sec-card')){
+          document.getElementById('sec-cards-{{ course.id }}').innerHTML =
+            '<div style="color:var(--gray);font-size:13px;padding:12px 0;">You are not assigned to any sections in this course.</div>';
+        }
+        </script>
       </div>
 
     </div><!-- /inner padding -->
@@ -473,7 +503,7 @@ function toggleCourse(id) {
 
 /* ── Per-course tab switching ── */
 function switchCTab(courseId, tab) {
-  ['clo','plo','students'].forEach(t => {
+  ['clo','plo','students','sections'].forEach(t => {
     const pane = document.getElementById('cpane-' + t + '-' + courseId);
     const btn  = document.getElementById('ctab-' + t + '-' + courseId);
     if (!pane || !btn) return;
