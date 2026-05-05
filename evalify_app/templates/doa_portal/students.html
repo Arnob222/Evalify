@@ -1,0 +1,102 @@
+{% extends 'doa_portal/base.html' %}
+{% block nav_students %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Students</div>
+    <div class="page-sub">Search students by registration ID or filter by course</div>
+  </div>
+</div>
+
+<!-- Search & Filter bar -->
+<form method="get" id="filterForm">
+  <div class="filter-bar" style="flex-wrap:wrap;gap:10px;">
+    <div class="search-box" style="flex:1;min-width:220px;max-width:320px;">
+      <span class="search-icon">&#128269;</span>
+      <input type="text" name="q" class="form-control" value="{{ q }}"
+             placeholder="Search by registration ID or name…">
+    </div>
+    <select name="course" class="form-control" style="width:280px;" onchange="this.form.submit()">
+      <option value="">— All Students —</option>
+      {% for c in courses %}
+      <option value="{{ c.id }}" {% if course_id == c.id|stringformat:"s" %}selected{% endif %}>
+        {{ c.code }} — {{ c.name }}
+      </option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Search</button>
+    {% if q or course_id %}
+    <a href="{% url 'doa_students' %}" class="btn btn-outline">Clear</a>
+    {% endif %}
+  </div>
+  {% if selected_course %}
+  <div style="font-size:13px;color:var(--gray);margin-bottom:4px;">
+    Showing students enrolled in <strong>{{ selected_course.code }} — {{ selected_course.name }}</strong>
+  </div>
+  {% endif %}
+</form>
+
+<div class="panel">
+  <div class="panel-head">
+    <span class="panel-title">
+      {% if selected_course %}{{ selected_course.code }} Students{% else %}All Students{% endif %}
+    </span>
+    <span style="font-size:13px;color:var(--gray);">{{ students|length }} student{{ students|length|pluralize }}</span>
+  </div>
+  <div class="panel-body" style="padding:0;">
+    {% if students %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Registration ID</th>
+            <th>Email</th>
+            <th>Enrolled Courses</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in students %}
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:32px;height:32px;border-radius:50%;background:var(--indigo-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--indigo);flex-shrink:0;">
+                  {{ s.full_name|default:s.username|slice:":1"|upper }}
+                </div>
+                <div>
+                  <div style="font-weight:600;">{{ s.full_name|default:s.username }}</div>
+                  <div style="font-size:11px;color:var(--gray);">{{ s.email }}</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="badge badge-gray" style="font-family:monospace;letter-spacing:.3px;">{{ s.username }}</span>
+            </td>
+            <td style="font-size:13px;color:var(--gray);">{{ s.email }}</td>
+            <td>
+              <span class="badge badge-blue">{{ s.enrolled_count }} course{{ s.enrolled_count|pluralize }}</span>
+            </td>
+            <td>
+              <a href="{% url 'doa_student_attainment' s.id %}" class="btn btn-outline btn-sm">
+                &#128202; View Attainment
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">&#127891;</div>
+      <div class="empty-title">No students found</div>
+      <div class="empty-sub">
+        {% if q %}No results for "{{ q }}".{% elif selected_course %}No students enrolled in {{ selected_course.code }}.{% else %}No students registered yet.{% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

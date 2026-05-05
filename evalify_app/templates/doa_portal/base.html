@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DOA Portal — Evalify</title>
+<title>DAO Portal — Evalify</title>
 <link rel="icon" type="image/png" href="{% static 'images/evalify_icon.PNG' %}">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -142,7 +142,7 @@ tbody tr:hover td { background:#fafbfc; }
       <div class="logo-sub">Measure Learning. Improve Outcomes.</div>
     </div>
   </div>
-  <div class="mode-badge">&#128203; DOA Portal</div>
+  <div class="mode-badge">&#128203; DAO Portal</div>
   <nav class="nav">
     <div class="nav-section">Overview</div>
     <a href="{% url 'doa_dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">
@@ -155,13 +155,23 @@ tbody tr:hover td { background:#fafbfc; }
     <a href="{% url 'doa_courses' %}" class="{% block nav_courses %}{% endblock %}">
       <span class="nav-icon">&#128218;</span> Courses
     </a>
+    <a href="{% url 'doa_students' %}" class="{% block nav_students %}{% endblock %}">
+      <span class="nav-icon">&#127891;</span> Students
+    </a>
+    <a href="{% url 'doa_sections' %}" class="{% block nav_sections %}{% endblock %}">
+      <span class="nav-icon">&#128203;</span> Sections
+    </a>
+    <div class="nav-section">Analytics</div>
+    <a href="{% url 'doa_analytics' %}" class="{% block nav_analytics %}{% endblock %}">
+      <span class="nav-icon">&#128202;</span> PLO Attainment
+    </a>
   </nav>
   <div class="sidebar-footer">
     <div class="user-info">
       <div class="user-avatar">D</div>
       <div>
         <div class="user-name">{{ request.user.full_name|default:request.user.username }}</div>
-        <div class="user-role">DOA</div>
+        <div class="user-role">DAO</div>
       </div>
     </div>
     <a href="{% url 'sign_out' %}" class="sign-out-btn">&#8618; Sign Out</a>

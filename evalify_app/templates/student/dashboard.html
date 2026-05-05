@@ -177,6 +177,38 @@
 </div>
 {% endif %}
 
+<!-- My Sections -->
+{% if my_sections %}
+<div class="panel" style="margin-top:20px;">
+  <div class="panel-head">
+    <div class="panel-title">My Sections</div>
+    <span style="font-size:12px;color:var(--gray);">{{ my_sections|length }} section{{ my_sections|length|pluralize }}</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;padding:16px 20px;">
+    {% for sec in my_sections %}
+    <div style="background:linear-gradient(135deg,#f8fafc,#eef2ff);border:1px solid var(--border);border-radius:10px;padding:14px 16px;border-left:4px solid var(--indigo);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="width:40px;height:40px;border-radius:50%;background:var(--indigo-light);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:var(--indigo);flex-shrink:0;">
+          {{ sec.name }}
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--indigo);letter-spacing:.4px;text-transform:uppercase;">{{ sec.course.code }}</div>
+          <div style="font-size:13px;font-weight:700;">Section {{ sec.name }}</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:6px;">{{ sec.course.name|truncatechars:32 }}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span style="background:#eef2ff;color:var(--indigo-dark);font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;">{{ sec.batch }}</span>
+        {% for f in sec.faculty.all %}
+        <span style="background:#e0f5f4;color:#0f766e;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;">{{ f.full_name|default:f.username }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <script>
 (function(){
   const h = new Date().getHours();

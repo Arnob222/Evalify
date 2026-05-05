@@ -297,6 +297,28 @@ class Notification(models.Model):
 
 
 
+class Section(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='sections')
+    name = models.CharField(max_length=50)
+    batch = models.CharField(max_length=50)
+    faculty = models.ManyToManyField(
+        User, related_name='teaching_sections', blank=True,
+        limit_choices_to={'role': 'faculty'},
+    )
+    students = models.ManyToManyField(
+        User, related_name='enrolled_sections', blank=True,
+        limit_choices_to={'role': 'student'},
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('course', 'name', 'batch')
+        ordering = ['batch', 'name']
+
+    def __str__(self):
+        return f"{self.course.code} | {self.batch} | Sec {self.name}"
+
+
 class PastPaper(models.Model):
     EXAM_TYPE_CHOICES = [
         ('mid',        'Mid Exam'),
