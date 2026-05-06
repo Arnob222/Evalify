@@ -1094,10 +1094,12 @@ def student_clo_results(request):
     enrollments = Enrollment.objects.filter(student=request.user).select_related('course')
     results = []
     program_plo_data = {}   # plo_id -> {code, description, total_max, total_raw}
+    semester_plo_data = {}  # semester -> {plo_id: {code, description, total_max, total_raw}}
     SUB_TYPES = {'mid', 'final'}
 
     for e in enrollments:
         course = e.course
+        semester = course.semester
         assessments = list(
             Assessment.objects.filter(course=course, status='published')
             .prefetch_related(
@@ -1215,6 +1217,16 @@ def student_clo_results(request):
                 }
             program_plo_data[p.id]['total_max'] += mx
             program_plo_data[p.id]['total_raw'] += raw
+            # accumulate for semester-level summary
+            if semester not in semester_plo_data:
+                semester_plo_data[semester] = {}
+            if p.id not in semester_plo_data[semester]:
+                semester_plo_data[semester][p.id] = {
+                    'code': p.code, 'description': p.description,
+                    'total_max': 0.0, 'total_raw': 0.0,
+                }
+            semester_plo_data[semester][p.id]['total_max'] += mx
+            semester_plo_data[semester][p.id]['total_raw'] += raw
 
         graded_count = Submission.objects.filter(
             student=request.user, assessment__in=assessments,
@@ -1242,9 +1254,48 @@ def student_clo_results(request):
         key=lambda x: x['code'],
     )
 
+    # Build semester-wise PLO comparison table
+    def _sem_sort_key(s):
+        parts = s.split()
+        year = int(parts[-1]) if len(parts) > 1 and parts[-1].isdigit() else 0
+        term_order = {'spring': 1, 'summer': 2, 'fall': 3, 'winter': 0}
+        return (year, term_order.get(parts[0].lower() if parts else '', 5))
+
+    _all_plo_info = {}
+    for _sd in semester_plo_data.values():
+        for _info in _sd.values():
+            if _info['code'] not in _all_plo_info:
+                _all_plo_info[_info['code']] = _info['description']
+
+    _plo_codes = sorted(_all_plo_info.keys())
+    _semesters = sorted(semester_plo_data.keys(), key=_sem_sort_key)
+
+    _comparison_rows = []
+    for _code in _plo_codes:
+        _cells = []
+        for _sem in _semesters:
+            _sd = semester_plo_data.get(_sem, {})
+            _pe = next((i for i in _sd.values() if i['code'] == _code), None)
+            if _pe and _pe['total_max'] > 0:
+                _att = round(_pe['total_raw'] / _pe['total_max'] * 100, 1)
+                _cells.append({'semester': _sem, 'attainment': _att, 'has_data': True})
+            else:
+                _cells.append({'semester': _sem, 'attainment': 0, 'has_data': False})
+        _comparison_rows.append({
+            'code': _code,
+            'description': _all_plo_info[_code],
+            'cells': _cells,
+        })
+
+    semester_plo_comparison = {
+        'semesters': _semesters,
+        'rows': _comparison_rows,
+    }
+
     return render(request, 'student/clo_results.html', {
         'results': results,
         'program_plo_attainment': program_plo_attainment,
+        'semester_plo_comparison': semester_plo_comparison,
     })
 
 
