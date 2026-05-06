@@ -26,6 +26,7 @@ urlpatterns = [
     path('faculty/grading/<int:sub_id>/', views.get_submission_detail, name='submission_detail'),
     path('faculty/grading/<int:sub_id>/grade/', views.grade_submission, name='grade_submission'),
     path('faculty/analytics/', views.faculty_analytics, name='faculty_analytics'),
+    path('faculty/plo-comparison/', views.faculty_plo_comparison, name='faculty_plo_comparison'),
     path('faculty/escar/', views.faculty_escar, name='faculty_escar'),
     path('faculty/escar/save-plan/', views.save_escar_plan, name='save_escar_plan'),
     path('faculty/announcements/', views.faculty_announcements, name='faculty_announcements'),
