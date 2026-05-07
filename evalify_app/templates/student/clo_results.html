@@ -120,6 +120,138 @@
 {% endif %}
 <!-- ══ end overall ══════════════════════════════════════════════════════ -->
 
+<!-- ══ Semester-wise PLO Comparison ════════════════════════════════════ -->
+{% if semester_plo_comparison.rows %}
+<div style="background:#fff;border-radius:14px;border:1px solid var(--border);
+            padding:24px;margin-bottom:28px;
+            box-shadow:0 2px 8px rgba(0,0,0,.05);">
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <div>
+      <div style="font-size:18px;font-weight:800;color:var(--text);">Semester-wise PLO Comparison</div>
+      <div style="font-size:13px;color:var(--gray);margin-top:3px;">
+        Track how your PLO attainment evolves across semesters &nbsp;&middot;&nbsp;
+        {{ semester_plo_comparison.semesters|length }} semester{{ semester_plo_comparison.semesters|length|pluralize }}
+      </div>
+    </div>
+    <span style="font-size:32px;">📈</span>
+  </div>
+
+  <!-- Grouped bar chart -->
+  {% if semester_plo_comparison.semesters|length > 0 %}
+  <div style="background:#f9fafb;border-radius:10px;padding:16px;margin-bottom:20px;">
+    <div style="font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
+      PLO Attainment by Semester
+    </div>
+    <div style="position:relative;height:260px;">
+      <canvas id="semComparisonChart"></canvas>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Search & filter controls -->
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+    <div style="position:relative;flex:1;min-width:200px;max-width:380px;">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:14px;pointer-events:none;">&#128269;</span>
+      <input type="text" id="semSearchInput"
+             placeholder="Search semester (e.g. Fall 2024)&hellip;"
+             style="width:100%;padding:8px 12px 8px 32px;border:1px solid var(--border);
+                    border-radius:8px;font-size:13px;outline:none;box-sizing:border-box;"
+             oninput="semFilterBySearch(this.value)">
+    </div>
+    <button onclick="semResetFilter()"
+            style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;
+                   background:#f9fafb;font-size:12px;cursor:pointer;color:var(--gray);">
+      Show All
+    </button>
+    <span id="semActiveCount" style="font-size:12px;color:var(--gray);"></span>
+  </div>
+
+  <!-- Semester pill toggles -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;" id="semPillContainer">
+    {% for sem in semester_plo_comparison.semesters %}
+    <button class="sem-pill active" data-semester="{{ sem }}"
+            onclick="semTogglePill(this)"
+            style="padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;
+                   cursor:pointer;border:1.5px solid #20b2aa;background:#20b2aa;color:#fff;
+                   transition:all .2s;">
+      {{ sem }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- Comparison table -->
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table id="semCompTable"
+           style="width:100%;border-collapse:collapse;font-size:13px;min-width:400px;">
+      <thead>
+        <tr style="background:#f9fafb;">
+          <th style="padding:10px 14px;text-align:left;font-weight:700;white-space:nowrap;
+                     border-bottom:2px solid var(--border);min-width:70px;position:sticky;left:0;background:#f9fafb;z-index:1;">
+            PLO
+          </th>
+          <th style="padding:10px 14px;text-align:left;font-weight:700;
+                     border-bottom:2px solid var(--border);min-width:180px;">
+            Description
+          </th>
+          {% for sem in semester_plo_comparison.semesters %}
+          <th class="sem-col-th" data-semester="{{ sem }}"
+              style="padding:10px 14px;text-align:center;font-weight:700;white-space:nowrap;
+                     border-bottom:2px solid var(--border);min-width:120px;color:#20b2aa;">
+            {{ sem }}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in semester_plo_comparison.rows %}
+        <tr style="border-bottom:1px solid var(--border);" class="sem-table-row">
+          <td style="padding:10px 14px;font-weight:700;color:#20b2aa;white-space:nowrap;
+                     position:sticky;left:0;background:#fff;">
+            {{ row.code }}
+          </td>
+          <td style="padding:10px 14px;color:var(--gray);font-size:12px;">
+            {{ row.description|truncatechars:60 }}
+          </td>
+          {% for cell in row.cells %}
+          <td class="sem-col-td" data-semester="{{ cell.semester }}"
+              style="padding:10px 14px;text-align:center;vertical-align:middle;">
+            {% if cell.has_data %}
+            <div style="display:inline-flex;flex-direction:column;align-items:center;gap:3px;">
+              <span style="font-weight:800;font-size:15px;
+                           {% if cell.attainment >= 80 %}color:#059669;
+                           {% elif cell.attainment >= 60 %}color:#0f766e;
+                           {% elif cell.attainment >= 40 %}color:#d97706;
+                           {% else %}color:#dc2626;{% endif %}">
+                {{ cell.attainment }}%
+              </span>
+              <span class="level-pill
+                {% if cell.attainment >= 80 %}level-excellent
+                {% elif cell.attainment >= 60 %}level-good
+                {% elif cell.attainment >= 40 %}level-developing
+                {% else %}level-needs{% endif %}"
+                style="font-size:9px;padding:1px 7px;">
+                {% if cell.attainment >= 80 %}Excellent
+                {% elif cell.attainment >= 60 %}Good
+                {% elif cell.attainment >= 40 %}Developing
+                {% else %}Needs Attention{% endif %}
+              </span>
+            </div>
+            {% else %}
+            <span style="color:#d1d5db;font-size:13px;">&mdash;</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endif %}
+<!-- ══ end semester comparison ══════════════════════════════════════════ -->
+
 {% if results %}
   {% for item in results %}
   <div class="course-card">
@@ -289,6 +421,105 @@ const BAR_PALETTE = [
       }
     }
   });
+})();
+{% endif %}
+
+// ── Semester-wise PLO Comparison ─────────────────────────────────────────
+{% if semester_plo_comparison.rows %}
+(function () {
+  const SEM_PALETTE = [
+    '#20b2aa','#4472C4','#ED7D31','#70AD47','#7030A0',
+    '#FFC000','#FF0000','#00B050','#C00000','#993366'
+  ];
+
+  // ── Chart ──────────────────────────────────────────────────────────────
+  const chartEl = document.getElementById('semComparisonChart');
+  if (chartEl) {
+    const ploLabels = [{% for row in semester_plo_comparison.rows %}'{{ row.code }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+    const semNames  = [{% for sem in semester_plo_comparison.semesters %}'{{ sem }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+    // cells are already ordered to match semNames; null = no data
+    const ploRows = [
+      {% for row in semester_plo_comparison.rows %}
+      [{% for cell in row.cells %}{% if cell.has_data %}{{ cell.attainment }}{% else %}null{% endif %}{% if not forloop.last %},{% endif %}{% endfor %}]{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ];
+    const datasets = semNames.map((sem, i) => ({
+      label: sem,
+      data: ploRows.map(r => r[i]),
+      backgroundColor: SEM_PALETTE[i % SEM_PALETTE.length] + 'cc',
+      borderColor: SEM_PALETTE[i % SEM_PALETTE.length],
+      borderWidth: 1,
+      borderRadius: 4,
+    }));
+    new Chart(chartEl, {
+      type: 'bar',
+      data: { labels: ploLabels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 }, padding: 8 } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw !== null ? ctx.raw.toFixed(1) + '%' : 'N/A'}` } }
+        },
+        scales: {
+          y: { min: 0, max: 100, ticks: { font: { size: 10 }, stepSize: 20, color: '#6b7280' }, grid: { color: '#e5e7eb' } },
+          x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: '#374151' } }
+        }
+      }
+    });
+  }
+
+  // ── Filter helpers ─────────────────────────────────────────────────────
+  function getActiveSems() {
+    return new Set(
+      [...document.querySelectorAll('.sem-pill.active')].map(p => p.dataset.semester)
+    );
+  }
+
+  function applyColVisibility() {
+    const active = getActiveSems();
+    document.querySelectorAll('.sem-col-th, .sem-col-td').forEach(el => {
+      el.style.display = active.has(el.dataset.semester) ? '' : 'none';
+    });
+    const n = active.size;
+    const el = document.getElementById('semActiveCount');
+    if (el) el.textContent = n + ' semester' + (n !== 1 ? 's' : '') + ' shown';
+  }
+
+  window.semTogglePill = function (btn) {
+    btn.classList.toggle('active');
+    if (btn.classList.contains('active')) {
+      btn.style.background = '#20b2aa'; btn.style.color = '#fff'; btn.style.borderColor = '#20b2aa';
+    } else {
+      btn.style.background = '#fff'; btn.style.color = '#20b2aa'; btn.style.borderColor = '#20b2aa';
+    }
+    applyColVisibility();
+  };
+
+  window.semFilterBySearch = function (q) {
+    const term = q.trim().toLowerCase();
+    document.querySelectorAll('.sem-pill').forEach(pill => {
+      const match = !term || pill.dataset.semester.toLowerCase().includes(term);
+      pill.style.display = match ? '' : 'none';
+      if (!match && pill.classList.contains('active')) {
+        pill.classList.remove('active');
+        pill.style.background = '#fff'; pill.style.color = '#20b2aa'; pill.style.borderColor = '#20b2aa';
+      }
+    });
+    applyColVisibility();
+  };
+
+  window.semResetFilter = function () {
+    document.getElementById('semSearchInput').value = '';
+    document.querySelectorAll('.sem-pill').forEach(pill => {
+      pill.style.display = '';
+      pill.classList.add('active');
+      pill.style.background = '#20b2aa'; pill.style.color = '#fff'; pill.style.borderColor = '#20b2aa';
+    });
+    applyColVisibility();
+  };
+
+  applyColVisibility();
 })();
 {% endif %}
 
