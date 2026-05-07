@@ -1,0 +1,90 @@
+{% extends 'dept_head_portal/base.html' %}
+{% block nav_users %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Users</div>
+    <div class="page-sub">Faculty and student accounts</div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <div class="search-box" style="flex:1;max-width:320px;">
+    <span class="search-icon">&#128269;</span>
+    <input type="text" class="form-control" id="searchInput" placeholder="Search by name or email…" oninput="filterTable()">
+  </div>
+  <select class="form-control" id="roleFilter" style="width:140px;" onchange="filterTable()">
+    <option value="">All Roles</option>
+    <option value="faculty">Faculty</option>
+    <option value="student">Student</option>
+  </select>
+  <span style="font-size:13px;color:var(--gray);margin-left:4px;">{{ users|length }} users</span>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table id="usersTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Joined</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr data-name="{{ u.full_name|lower }} {{ u.username|lower }}" data-email="{{ u.email|lower }}" data-role="{{ u.role }}">
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--violet-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--violet);flex-shrink:0;">
+                {{ u.full_name|default:u.username|slice:":1"|upper }}
+              </div>
+              <div>
+                <div style="font-weight:600;">{{ u.full_name|default:u.username }}</div>
+                <div style="font-size:11px;color:var(--gray);">@{{ u.username }}</div>
+              </div>
+            </div>
+          </td>
+          <td style="font-size:13px;">{{ u.email }}</td>
+          <td>
+            <span class="badge {% if u.role == 'faculty' %}badge-teal{% elif u.role == 'student' %}badge-blue{% elif u.role == 'admin' %}badge-red{% elif u.role == 'dao' or u.role == 'dept_head' %}badge-violet{% else %}badge-gray{% endif %}">
+              {{ u.role|default:"—" }}
+            </span>
+          </td>
+          <td style="font-size:12px;color:var(--gray);">{{ u.date_joined|date:"M d, Y" }}</td>
+          <td>
+            {% if u.is_active %}
+            <span class="badge badge-green">Active</span>
+            {% else %}
+            <span class="badge badge-red">Inactive</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">
+          <div class="empty-state"><div class="empty-icon">&#128101;</div><div class="empty-title">No users found</div></div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterTable() {
+  const q    = document.getElementById('searchInput').value.toLowerCase();
+  const role = document.getElementById('roleFilter').value;
+  document.querySelectorAll('#usersTable tbody tr').forEach(row => {
+    const name  = row.dataset.name  || '';
+    const email = row.dataset.email || '';
+    const r     = row.dataset.role  || '';
+    row.style.display = ((!q || name.includes(q) || email.includes(q)) && (!role || r === role)) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

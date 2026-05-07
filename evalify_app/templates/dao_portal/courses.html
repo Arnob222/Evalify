@@ -1,4 +1,4 @@
-{% extends 'doa_portal/base.html' %}
+﻿{% extends 'dao_portal/base.html' %}
 {% block nav_courses %}active{% endblock %}
 
 {% block content %}
@@ -71,18 +71,18 @@
           <td>
             <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
               <!-- Reassign Faculty button -->
-              <a href="{% url 'doa_assign_faculty_page' c.id %}" class="btn btn-outline btn-sm">
+              <a href="{% url 'dao_assign_faculty_page' c.id %}" class="btn btn-outline btn-sm">
                 &#128101; Assign Faculty
               </a>
               <!-- Activate / Deactivate -->
-              <form method="post" action="{% url 'doa_toggle_course_active' c.id %}">
+              <form method="post" action="{% url 'dao_toggle_course_active' c.id %}">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-sm {% if c.is_active %}btn-danger{% else %}btn-outline{% endif %}">
                   {% if c.is_active %}Deactivate{% else %}Activate{% endif %}
                 </button>
               </form>
               <!-- Delete -->
-              <form method="post" action="{% url 'doa_delete_course' c.id %}" style="display:inline;">
+              <form method="post" action="{% url 'dao_delete_course' c.id %}" style="display:inline;">
                 {% csrf_token %}
                 <button type="button" class="btn btn-sm"
                   style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-weight:600;"
@@ -141,7 +141,7 @@
       <span class="modal-title">Create New Course</span>
       <button class="modal-close" onclick="closeModal('createCourseModal')">&times;</button>
     </div>
-    <form method="post" action="{% url 'doa_create_course' %}">
+    <form method="post" action="{% url 'dao_create_course' %}">
       {% csrf_token %}
       <div class="modal-body">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">

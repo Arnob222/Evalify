@@ -11,7 +11,7 @@
 
 <div class="filter-bar">
   <div class="search-box" style="flex:1;max-width:300px;">
-    <span class="search-icon">🔍</span>
+    <span class="search-icon">&#128269;</span>
     <input type="text" class="form-control" id="searchInput" placeholder="Search student or assessment…" oninput="filterTable()">
   </div>
   <select class="form-control" id="statusFilter" style="width:140px;" onchange="filterTable()">
@@ -32,6 +32,7 @@
           <th>Assessment</th>
           <th>Course</th>
           <th>Score</th>
+          <th>Submitted</th>
           <th>Status</th>
         </tr>
       </thead>
@@ -52,6 +53,7 @@
             <span style="color:var(--light);">—</span>
             {% endif %}
           </td>
+          <td style="font-size:12px;color:var(--gray);">{{ s.submitted_at|date:"M d, Y" }}</td>
           <td>
             <span class="badge {% if s.status == 'graded' %}badge-green{% elif s.status == 'flagged' %}badge-red{% else %}badge-orange{% endif %}">
               {{ s.status }}
@@ -59,8 +61,8 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="5">
-          <div class="empty-state"><div class="empty-icon">📨</div><div class="empty-title">No submissions yet</div></div>
+        <tr><td colspan="6">
+          <div class="empty-state"><div class="empty-icon">&#128232;</div><div class="empty-title">No submissions yet</div></div>
         </td></tr>
         {% endfor %}
       </tbody>

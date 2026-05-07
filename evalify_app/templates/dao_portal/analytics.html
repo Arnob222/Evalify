@@ -1,0 +1,206 @@
+﻿{% extends 'dao_portal/base.html' %}
+{% block nav_analytics %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">PLO Attainment</div>
+    <div class="page-sub">Program Learning Outcome attainment per course</div>
+  </div>
+</div>
+
+<!-- Search & filter -->
+<form method="get" style="margin-bottom:22px;">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+    <div class="search-box" style="flex:1;min-width:200px;max-width:280px;">
+      <span class="search-icon">&#128269;</span>
+      <input type="text" name="course_name" class="form-control"
+             value="{{ course_name_q }}" placeholder="Search by course name or code…">
+    </div>
+    <select name="semester" class="form-control" style="width:200px;">
+      <option value="">— All Semesters —</option>
+      {% for sem in all_semesters %}
+      <option value="{{ sem }}" {% if semester_q == sem %}selected{% endif %}>{{ sem }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Filter</button>
+    {% if course_name_q or semester_q %}
+    <a href="{% url 'dao_analytics' %}" class="btn btn-outline">Clear</a>
+    {% endif %}
+  </div>
+  {% if course_name_q or semester_q %}
+  <div style="font-size:12px;color:var(--gray);margin-bottom:8px;">
+    {{ courses|length }} course{{ courses|length|pluralize }} found
+    {% if course_name_q %} matching "<strong>{{ course_name_q }}</strong>"{% endif %}
+    {% if semester_q %} in <strong>{{ semester_q }}</strong>{% endif %}
+  </div>
+  {% endif %}
+  <div style="display:flex;gap:10px;align-items:center;">
+    <select name="course" class="form-control" style="max-width:420px;">
+      {% for c in courses %}
+      <option value="{{ c.id }}" {% if selected_course and selected_course.id == c.id %}selected{% endif %}>
+        {{ c.code }} — {{ c.name }} ({{ c.semester }})
+      </option>
+      {% empty %}
+      <option disabled>No courses match the filter</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">View Attainment</button>
+  </div>
+</form>
+
+{% if selected_course %}
+
+<!-- Stats row -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Course</div>
+      <div style="font-size:20px;font-weight:800;color:var(--indigo);">{{ selected_course.code }}</div>
+      <div class="stat-sub">{{ selected_course.name }}</div>
+    </div>
+    <div class="stat-icon-wrap si-indigo">&#128218;</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Enrolled Students</div>
+      <div class="stat-val">{{ total_enrolled }}</div>
+      <div class="stat-sub">Total enrolled</div>
+    </div>
+    <div class="stat-icon-wrap si-blue">&#128101;</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Present (graded)</div>
+      <div class="stat-val">{{ present_count }}</div>
+      <div class="stat-sub">Used as denominator</div>
+    </div>
+    <div class="stat-icon-wrap si-green">&#9989;</div>
+  </div>
+</div>
+
+<!-- PLO Attainment table -->
+<div class="panel" style="margin-bottom:24px;">
+  <div class="panel-head">
+    <span class="panel-title">PLO Attainment — {{ selected_course.code }}</span>
+    <span style="font-size:12px;color:var(--gray);">Threshold: 40% per student, 60% class target</span>
+  </div>
+  <div class="panel-body" style="padding:0;">
+    {% if plo_attainment %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>PLO</th>
+            <th>Description</th>
+            <th>Achieved (≥40%)</th>
+            <th>Present</th>
+            <th>Attainment %</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in plo_attainment %}
+          <tr>
+            <td><span class="badge badge-indigo">{{ p.code }}</span></td>
+            <td style="font-size:12.5px;max-width:300px;">{{ p.description }}</td>
+            <td style="font-weight:600;">{{ p.achieved }}</td>
+            <td style="color:var(--gray);">{{ p.present }}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;max-width:120px;background:#e2e8f0;border-radius:20px;height:8px;overflow:hidden;">
+                  <div style="height:100%;border-radius:20px;width:{{ p.attainment }}%;background:{% if p.attainment >= 60 %}var(--green){% elif p.attainment >= 40 %}var(--orange){% else %}var(--red){% endif %};"></div>
+                </div>
+                <span style="font-weight:700;font-size:14px;">{{ p.attainment }}%</span>
+              </div>
+            </td>
+            <td>
+              {% if p.attainment >= 60 %}
+                <span class="badge badge-green">Attained</span>
+              {% elif p.attainment >= 40 %}
+                <span class="badge badge-orange">Partial</span>
+              {% else %}
+                <span class="badge badge-red">Not Attained</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">&#128202;</div>
+      <div class="empty-title">No PLO data available</div>
+      <div class="empty-sub">No published assessments with PLO mappings found for this course.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- CLO Attainment table -->
+<div class="panel">
+  <div class="panel-head">
+    <span class="panel-title">CLO Attainment — {{ selected_course.code }}</span>
+  </div>
+  <div class="panel-body" style="padding:0;">
+    {% if clo_attainment %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>CLO</th>
+            <th>Description</th>
+            <th>Achieved (≥40%)</th>
+            <th>Present</th>
+            <th>Attainment %</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in clo_attainment %}
+          <tr>
+            <td><span class="badge badge-teal">{{ c.code }}</span></td>
+            <td style="font-size:12.5px;max-width:300px;">{{ c.description }}</td>
+            <td style="font-weight:600;">{{ c.achieved }}</td>
+            <td style="color:var(--gray);">{{ c.present }}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;max-width:120px;background:#e2e8f0;border-radius:20px;height:8px;overflow:hidden;">
+                  <div style="height:100%;border-radius:20px;width:{{ c.attainment }}%;background:{% if c.attainment >= 60 %}var(--green){% elif c.attainment >= 40 %}var(--orange){% else %}var(--red){% endif %};"></div>
+                </div>
+                <span style="font-weight:700;font-size:14px;">{{ c.attainment }}%</span>
+              </div>
+            </td>
+            <td>
+              {% if c.attainment >= 60 %}
+                <span class="badge badge-green">Attained</span>
+              {% elif c.attainment >= 40 %}
+                <span class="badge badge-orange">Partial</span>
+              {% else %}
+                <span class="badge badge-red">Not Attained</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">&#128202;</div>
+      <div class="empty-title">No CLO data available</div>
+      <div class="empty-sub">No published assessments with CLO mappings found for this course.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">&#128202;</div>
+  <div class="empty-title">No courses available</div>
+  <div class="empty-sub">Create a course first to view PLO attainment data.</div>
+</div>
+{% endif %}
+{% endblock %}

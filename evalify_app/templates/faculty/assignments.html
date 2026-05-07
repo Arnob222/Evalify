@@ -393,6 +393,33 @@
         </div>
       </div>
 
+      <!-- ── Section Targeting ── -->
+      {% if faculty_sections %}
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray);
+                      text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">
+          Visible To (Sections)
+        </label>
+        <div style="border:1px solid var(--border);border-radius:8px;padding:10px 14px;background:#fafbfc;">
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;color:var(--gray);cursor:pointer;">
+            <input type="checkbox" id="allSectionsCheck" checked onchange="toggleAllSections(this)"
+                   style="accent-color:var(--teal);width:14px;height:14px;">
+            All sections (course-wide)
+          </label>
+          <div id="sectionCheckboxes" style="display:none;padding-top:4px;border-top:1px solid var(--border);margin-top:4px;">
+            {% for sec in faculty_sections %}
+            <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer;">
+              <input type="checkbox" class="section-cb" value="{{ sec.id }}"
+                     style="accent-color:var(--teal);width:14px;height:14px;">
+              <span style="font-weight:600;">Section {{ sec.name }}</span>
+              <span style="color:var(--gray);font-size:11px;">{{ sec.batch }} &nbsp;·&nbsp; <code style="font-size:10px;">{{ sec.code }}</code></span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       <!-- ── Grace Period / Late Submission Policy ── -->
       <div style="margin-bottom:10px;">
         <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;
@@ -456,6 +483,11 @@
   </div>
 </div>
 
+<!-- Section data for this course -->
+<script id="sectionData" type="application/json">
+[{% for sec in faculty_sections %}{"id":{{ sec.id }},"name":"{{ sec.name|escapejs }}","batch":"{{ sec.batch|escapejs }}","code":"{{ sec.code|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]
+</script>
+
 <!-- PLO data -->
 <script id="ploData" type="application/json">
 [{% for p in plos %}{"id":{{ p.id }},"code":"{{ p.code }}","desc":"{{ p.description|truncatechars:60|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]
@@ -478,9 +510,31 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('aDue').min = today;
 });
 
-const ALL_PLOS   = JSON.parse(document.getElementById('ploData').textContent);
+const ALL_PLOS    = JSON.parse(document.getElementById('ploData').textContent);
 const COURSE_CLOS = JSON.parse(document.getElementById('courseClosData').textContent);
+const FACULTY_SECTIONS = JSON.parse(document.getElementById('sectionData').textContent);
 let qCount = 0;
+
+function toggleAllSections(cb) {
+  document.getElementById('sectionCheckboxes').style.display = cb.checked ? 'none' : 'block';
+  if (cb.checked) document.querySelectorAll('.section-cb').forEach(c => c.checked = false);
+}
+
+function setSectionPicker(sectionIds) {
+  const allCb = document.getElementById('allSectionsCheck');
+  if (!allCb) return;
+  if (!sectionIds || sectionIds.length === 0) {
+    allCb.checked = true;
+    document.getElementById('sectionCheckboxes').style.display = 'none';
+    document.querySelectorAll('.section-cb').forEach(c => c.checked = false);
+  } else {
+    allCb.checked = false;
+    document.getElementById('sectionCheckboxes').style.display = 'block';
+    document.querySelectorAll('.section-cb').forEach(c => {
+      c.checked = sectionIds.includes(parseInt(c.value));
+    });
+  }
+}
 
 // ── Visibility state ──────────────────────────────────────────────────────
 let currentVisibility = 'published'; // default
@@ -823,6 +877,11 @@ async function submitCreate() {
   });
   if (!valid) return;
 
+  const allSectionsChecked = document.getElementById('allSectionsCheck');
+  const sectionIds = (!allSectionsChecked || allSectionsChecked.checked)
+    ? []
+    : [...document.querySelectorAll('.section-cb:checked')].map(cb => parseInt(cb.value));
+
   const payload = {
     course_id: {{ selected_course.id }},
     assessment_type: type, title, description: desc,
@@ -833,6 +892,7 @@ async function submitCreate() {
     late_deduction_value: parseFloat(document.getElementById('aDeductValue').value) || 0,
     max_late_days:        parseInt(document.getElementById('aMaxLateDays').value)   || 0,
     total_marks: parseInt(document.getElementById('aMarks').value) || 0,
+    section_ids: sectionIds,
     questions,
   };
 
@@ -903,6 +963,7 @@ async function openEditModal(id) {
   document.getElementById('enableLatePolicy').checked = hasLate;
   toggleLateSection();
   updateGracePreview();
+  setSectionPicker(d.section_ids || []);
 
   document.getElementById('questionsContainer').innerHTML = '';
   qCount = 0;

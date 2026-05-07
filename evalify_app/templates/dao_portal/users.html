@@ -1,4 +1,4 @@
-{% extends 'doa_portal/base.html' %}
+﻿{% extends 'dao_portal/base.html' %}
 {% block nav_users %}active{% endblock %}
 
 {% block content %}
@@ -52,7 +52,7 @@
           </td>
           <td style="font-size:13px;">{{ u.email }}</td>
           <td>
-            <span class="badge {% if u.role == 'faculty' %}badge-teal{% elif u.role == 'student' %}badge-blue{% elif u.role == 'admin' %}badge-red{% elif u.role == 'doa' %}badge-indigo{% else %}badge-gray{% endif %}">
+            <span class="badge {% if u.role == 'faculty' %}badge-teal{% elif u.role == 'student' %}badge-blue{% elif u.role == 'admin' %}badge-red{% elif u.role == 'dao' %}badge-indigo{% else %}badge-gray{% endif %}">
               {{ u.role|default:"—" }}
             </span>
           </td>
@@ -69,13 +69,13 @@
             <div style="display:flex;gap:6px;">
               <button class="btn btn-outline btn-sm" onclick="openEditModal({{ u.id }}, '{{ u.full_name|default:u.username }}', '{{ u.email }}', '{{ u.role }}')">Edit</button>
               {% if not u.is_superuser %}
-              <form method="post" action="{% url 'doa_toggle_user' u.id %}" style="display:inline;">
+              <form method="post" action="{% url 'dao_toggle_user' u.id %}" style="display:inline;">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-sm {% if u.is_active %}btn-danger{% else %}btn-outline{% endif %}">
                   {% if u.is_active %}Deactivate{% else %}Activate{% endif %}
                 </button>
               </form>
-              <form method="post" action="{% url 'doa_delete_user' u.id %}" style="display:inline;">
+              <form method="post" action="{% url 'dao_delete_user' u.id %}" style="display:inline;">
                 {% csrf_token %}
                 <button type="button" class="btn btn-sm"
                   style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-weight:600;"
@@ -108,7 +108,7 @@
       <span class="modal-title">Add New User</span>
       <button class="modal-close" onclick="closeModal('createModal')">&times;</button>
     </div>
-    <form method="post" action="{% url 'doa_create_user' %}">
+    <form method="post" action="{% url 'dao_create_user' %}">
       {% csrf_token %}
       <div class="modal-body">
         <div class="form-group">
@@ -171,7 +171,7 @@
       <span class="modal-title">Edit User</span>
       <button class="modal-close" onclick="closeModal('editModal')">&times;</button>
     </div>
-    <form method="post" action="{% url 'doa_edit_user' 0 %}" id="editForm">
+    <form method="post" action="{% url 'dao_edit_user' 0 %}" id="editForm">
       {% csrf_token %}
       <div class="modal-body">
         <div class="form-group">
@@ -235,7 +235,7 @@ function openEditModal(id, name, email, role) {
   if (roleSelect.querySelector(`option[value="${role}"]`)) {
     roleSelect.value = role;
   }
-  document.getElementById('editForm').action = `/doa-portal/users/${id}/edit/`;
+  document.getElementById('editForm').action = `/dao-portal/users/${id}/edit/`;
   openModal('editModal');
 }
 </script>

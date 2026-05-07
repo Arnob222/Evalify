@@ -1,0 +1,192 @@
+﻿{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DAO Portal — Evalify</title>
+<link rel="icon" type="image/png" href="{% static 'images/evalify_icon.PNG' %}">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sidebar: #1e1b4b;
+  --indigo: #6366f1;
+  --indigo-dark: #4f46e5;
+  --indigo-light: #eef2ff;
+  --bg: #f1f5f9;
+  --white: #fff;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --gray: #64748b;
+  --light: #94a3b8;
+  --orange: #f59e0b;
+  --red: #ef4444;
+  --green: #10b981;
+  --blue: #3b82f6;
+  --teal: #20b2aa;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); display:flex; min-height:100vh; }
+
+.sidebar { width:240px; min-width:240px; background:var(--sidebar); color:#fff; display:flex; flex-direction:column; padding:0; position:fixed; height:100vh; overflow-y:auto; }
+.sidebar-logo { display:flex; align-items:center; gap:12px; padding:22px 20px 18px; border-bottom:1px solid rgba(255,255,255,0.07); }
+.logo-icon { font-size:24px; }
+.logo-name { font-size:19px; font-weight:800; color:var(--indigo); letter-spacing:-0.5px; }
+.logo-sub { font-size:9px; color:rgba(255,255,255,0.35); margin-top:1px; }
+.mode-badge { margin:14px 20px 6px; background:rgba(99,102,241,0.15); color:#a5b4fc; font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; padding:5px 10px; border-radius:5px; border:1px solid rgba(99,102,241,0.25); display:inline-block; }
+.nav { flex:1; padding:4px 0 10px; }
+.nav-section { font-size:10px; font-weight:600; color:rgba(255,255,255,0.3); letter-spacing:1px; text-transform:uppercase; padding:14px 20px 6px; }
+.nav a { display:flex; align-items:center; gap:10px; padding:10px 20px; color:rgba(255,255,255,0.6); text-decoration:none; font-size:13.5px; transition:all .15s; }
+.nav a:hover { background:rgba(255,255,255,0.06); color:#fff; }
+.nav a.active { background:var(--indigo); color:#fff; border-radius:0; position:relative; }
+.nav a.active::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#fff; border-radius:0 2px 2px 0; }
+.nav-icon { font-size:15px; width:20px; text-align:center; }
+.sidebar-footer { padding:16px 20px; border-top:1px solid rgba(255,255,255,0.07); }
+.user-info { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.user-avatar { width:34px; height:34px; border-radius:50%; background:var(--indigo); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; flex-shrink:0; }
+.user-name { font-size:13px; font-weight:600; color:#fff; }
+.user-role { font-size:10px; color:rgba(255,255,255,0.4); margin-top:1px; }
+.sign-out-btn { display:flex; align-items:center; gap:8px; color:rgba(255,255,255,0.45); font-size:12px; text-decoration:none; padding:6px 0; transition:color .15s; }
+.sign-out-btn:hover { color:#fff; }
+
+.main { margin-left:240px; flex:1; padding:30px 36px; }
+.page-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:28px; }
+.page-title { font-size:24px; font-weight:800; letter-spacing:-0.5px; }
+.page-sub { font-size:13px; color:var(--gray); margin-top:3px; }
+
+.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px; }
+.stat-card { background:#fff; border:1px solid var(--border); border-radius:12px; padding:20px; display:flex; justify-content:space-between; align-items:center; transition:box-shadow .2s; }
+.stat-card:hover { box-shadow:0 4px 20px rgba(0,0,0,0.06); }
+.stat-label { font-size:12px; font-weight:500; color:var(--gray); margin-bottom:6px; }
+.stat-val { font-size:32px; font-weight:800; letter-spacing:-1px; }
+.stat-sub { font-size:11px; color:var(--light); margin-top:3px; }
+.stat-icon-wrap { width:46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; }
+.si-blue   { background:#eff6ff; }
+.si-teal   { background:#e0f5f4; }
+.si-green  { background:#f0fdf4; }
+.si-orange { background:#fff7ed; }
+.si-indigo { background:#eef2ff; }
+.si-purple { background:#f5f3ff; }
+
+.panel { background:#fff; border:1px solid var(--border); border-radius:12px; }
+.panel-head { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+.panel-title { font-size:14px; font-weight:700; }
+.panel-body { padding:20px; }
+
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; }
+thead th { font-size:11px; font-weight:600; color:var(--gray); text-transform:uppercase; letter-spacing:.5px; padding:10px 14px; background:#f8fafc; border-bottom:1px solid var(--border); text-align:left; }
+tbody td { padding:12px 14px; font-size:13.5px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+tbody tr:last-child td { border-bottom:none; }
+tbody tr:hover td { background:#fafbfc; }
+
+.badge { display:inline-flex; align-items:center; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+.badge-teal   { background:#e0f5f4; color:#0f766e; }
+.badge-blue   { background:#eff6ff; color:#1d4ed8; }
+.badge-green  { background:#f0fdf4; color:#166534; }
+.badge-orange { background:#fff7ed; color:#c2410c; }
+.badge-red    { background:#fef2f2; color:#b91c1c; }
+.badge-gray   { background:#f1f5f9; color:#475569; }
+.badge-indigo { background:#eef2ff; color:#4338ca; }
+
+.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:7px; font-size:13px; font-weight:500; cursor:pointer; border:none; transition:all .15s; font-family:'Inter',sans-serif; text-decoration:none; }
+.btn-primary { background:var(--indigo); color:#fff; }
+.btn-primary:hover { background:var(--indigo-dark); }
+.btn-danger  { background:#fef2f2; color:var(--red); border:1px solid #fecaca; }
+.btn-danger:hover  { background:#fee2e2; }
+.btn-outline { background:#fff; color:var(--text); border:1px solid var(--border); }
+.btn-outline:hover { background:#f8fafc; }
+.btn-sm { padding:5px 10px; font-size:12px; }
+.btn-ghost { background:transparent; color:var(--gray); border:none; padding:5px 8px; }
+.btn-ghost:hover { color:var(--red); background:#fef2f2; border-radius:5px; }
+
+.modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.6); backdrop-filter:blur(2px); z-index:1000; display:none; align-items:center; justify-content:center; padding:20px; }
+.modal-overlay.open { display:flex; }
+.modal { background:#fff; border-radius:14px; width:100%; max-width:520px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.15); }
+.modal-head { padding:20px 24px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); position:sticky; top:0; background:#fff; z-index:1; border-radius:14px 14px 0 0; }
+.modal-title { font-size:16px; font-weight:700; }
+.modal-close { background:none; border:none; font-size:22px; cursor:pointer; color:var(--gray); line-height:1; width:30px; height:30px; display:flex; align-items:center; justify-content:center; border-radius:6px; }
+.modal-close:hover { background:#f1f5f9; }
+.modal-body { padding:20px 24px; }
+.modal-foot { padding:0 24px 20px; display:flex; gap:10px; justify-content:flex-end; }
+
+.form-group { margin-bottom:14px; }
+.form-label { display:block; font-size:12px; font-weight:600; color:var(--gray); margin-bottom:5px; text-transform:uppercase; letter-spacing:.4px; }
+.form-control { width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:7px; font-size:13.5px; outline:none; font-family:'Inter',sans-serif; color:var(--text); background:#fff; }
+.form-control:focus { border-color:var(--indigo); box-shadow:0 0 0 3px rgba(99,102,241,.1); }
+.form-hint { font-size:11px; color:var(--light); margin-top:4px; }
+
+.alert { padding:12px 16px; border-radius:8px; font-size:13px; margin-bottom:16px; }
+.alert-success { background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; }
+.alert-error { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
+
+.empty-state { text-align:center; padding:48px 24px; color:var(--gray); }
+.empty-icon { font-size:40px; margin-bottom:10px; }
+.empty-title { font-size:15px; font-weight:600; color:var(--text); margin-bottom:4px; }
+.empty-sub { font-size:13px; }
+
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.search-box { position:relative; }
+.search-box input { padding-left:34px; }
+.search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--light); font-size:14px; }
+.filter-bar { display:flex; gap:10px; margin-bottom:18px; align-items:center; }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div>
+      <div class="logo-name">Evalify</div>
+      <div class="logo-sub">Measure Learning. Improve Outcomes.</div>
+    </div>
+  </div>
+  <div class="mode-badge">DAO Portal</div>
+  <nav class="nav">
+    <div class="nav-section">Overview</div>
+    <a href="{% url 'dao_dashboard' %}" class="{% block nav_dashboard %}{% endblock %}">Dashboard</a>
+    <div class="nav-section">Management</div>
+    <a href="{% url 'dao_users' %}" class="{% block nav_users %}{% endblock %}">Users</a>
+    <a href="{% url 'dao_courses' %}" class="{% block nav_courses %}{% endblock %}">Courses</a>
+    <a href="{% url 'dao_students' %}" class="{% block nav_students %}{% endblock %}">Students</a>
+    <a href="{% url 'dao_sections' %}" class="{% block nav_sections %}{% endblock %}">Sections</a>
+    <div class="nav-section">Analytics</div>
+    <a href="{% url 'dao_analytics' %}" class="{% block nav_analytics %}{% endblock %}">PLO Attainment</a>
+    <a href="{% url 'dao_escar' %}" class="{% block nav_escar %}{% endblock %}">ESCAR</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <div class="user-avatar">D</div>
+      <div>
+        <div class="user-name">{{ request.user.full_name|default:request.user.username }}</div>
+        <div class="user-role">DAO</div>
+      </div>
+    </div>
+    <a href="{% url 'sign_out' %}" class="sign-out-btn">&#8618; Sign Out</a>
+  </div>
+</aside>
+
+<main class="main">
+  {% if messages %}
+    {% for msg in messages %}
+    <div class="alert {% if msg.tags == 'error' %}alert-error{% else %}alert-success{% endif %}">
+      {{ msg }}
+    </div>
+    {% endfor %}
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+
+<script>
+function getCsrf() {
+  return document.cookie.split(';').find(c=>c.trim().startsWith('csrftoken='))?.split('=')[1]||'';
+}
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.addEventListener('click', e => {
+  if(e.target.classList.contains('modal-overlay')) e.target.classList.remove('open');
+});
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

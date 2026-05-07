@@ -11,7 +11,7 @@
 
 <div class="filter-bar">
   <div class="search-box" style="flex:1;max-width:320px;">
-    <span class="search-icon">🔍</span>
+    <span class="search-icon">&#128269;</span>
     <input type="text" class="form-control" id="searchInput" placeholder="Search title or course…" oninput="filterTable()">
   </div>
   <select class="form-control" id="typeFilter" style="width:150px;" onchange="filterTable()">
@@ -43,6 +43,7 @@
           <th>Due Date</th>
           <th>Status</th>
           <th>Submissions</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -51,7 +52,7 @@
           <td style="font-weight:600;">{{ a.title }}</td>
           <td>
             <span style="font-weight:600;color:var(--teal);">{{ a.course.code }}</span>
-            <div style="font-size:11px;color:var(--gray);">{% with f=a.course.faculty.first %}{{ f.full_name|default:f.username|default:"—" }}{% endwith %}</div>
+            <div style="font-size:11px;color:var(--gray);">{% with f=a.course.faculty.first %}{% if f %}{{ f.full_name|default:f.username }}{% else %}—{% endif %}{% endwith %}</div>
           </td>
           <td>
             <span class="badge
@@ -72,14 +73,49 @@
             </span>
           </td>
           <td><span class="badge badge-gray">{{ a.submissions.count }}</span></td>
+          <td>
+            <form method="post" action="{% url 'admin_delete_assessment' a.id %}" style="display:inline;">
+              {% csrf_token %}
+              <button type="button" class="btn btn-sm"
+                style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-weight:600;"
+                data-name="{{ a.title }}"
+                onclick="openDeleteConfirm(this.closest('form'), this.dataset.name)">
+                Delete
+              </button>
+            </form>
+          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="7">
-          <div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">No assessments found</div></div>
+        <tr><td colspan="8">
+          <div class="empty-state"><div class="empty-icon">&#128221;</div><div class="empty-title">No assessments found</div></div>
         </td></tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head" style="border-bottom:none;padding-bottom:0;">
+      <span></span>
+      <button class="modal-close" onclick="closeModal('deleteModal')">&times;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding-top:8px;">
+      <div style="width:64px;height:64px;border-radius:50%;background:#fef2f2;border:2px solid #fecaca;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:28px;">&#128465;</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:10px;">Delete Assessment?</div>
+      <div style="font-size:13.5px;color:var(--gray);line-height:1.6;">
+        "<span id="deleteName" style="font-weight:700;color:var(--text);"></span>"
+      </div>
+      <div style="margin-top:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:12px;color:#b91c1c;font-weight:600;">
+        All questions and student submissions will be permanently removed.
+      </div>
+    </div>
+    <div style="text-align:center;padding:8px 24px 24px;">
+      <button class="btn btn-outline" style="min-width:110px;margin-right:8px;" onclick="closeModal('deleteModal')">Cancel</button>
+      <button id="deleteConfirmBtn" class="btn" style="min-width:110px;background:#dc2626;color:#fff;font-weight:700;">Yes, Delete</button>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -87,9 +123,9 @@
 {% block scripts %}
 <script>
 function filterTable() {
-  const q   = document.getElementById('searchInput').value.toLowerCase();
-  const tp  = document.getElementById('typeFilter').value;
-  const st  = document.getElementById('statusFilter').value;
+  const q  = document.getElementById('searchInput').value.toLowerCase();
+  const tp = document.getElementById('typeFilter').value;
+  const st = document.getElementById('statusFilter').value;
   document.querySelectorAll('#assessTable tbody tr').forEach(row => {
     const name = row.dataset.name   || '';
     const type = row.dataset.type   || '';
@@ -97,5 +133,15 @@ function filterTable() {
     row.style.display = ((!q||name.includes(q)) && (!tp||type===tp) && (!st||stat===st)) ? '' : 'none';
   });
 }
+
+let _pendingDeleteForm = null;
+function openDeleteConfirm(form, name) {
+  _pendingDeleteForm = form;
+  document.getElementById('deleteName').textContent = name;
+  openModal('deleteModal');
+}
+document.getElementById('deleteConfirmBtn').addEventListener('click', function() {
+  if (_pendingDeleteForm) _pendingDeleteForm.submit();
+});
 </script>
 {% endblock %}

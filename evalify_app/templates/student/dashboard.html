@@ -118,7 +118,7 @@
         </div>
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ a.title }}</div>
-          <div style="font-size:11px;color:var(--gray);">{{ a.course.code }} · Due {{ a.due_date|date:"g:i A" }}</div>
+          <div style="font-size:11px;color:var(--gray);">{{ a.course.code }} · Due {{ a.due_date|date:"M d, Y" }}</div>
         </div>
       </div>
       {% empty %}
@@ -169,7 +169,7 @@
       <div style="font-size:10px;font-weight:700;color:var(--teal);letter-spacing:.4px;text-transform:uppercase;margin-bottom:3px;">{{ course.code }}</div>
       <div style="font-size:13px;font-weight:700;line-height:1.3;margin-bottom:6px;">{{ course.name|truncatechars:30 }}</div>
       <div style="font-size:11px;color:var(--gray);">
-        {% with f=course.faculty.first %}{{ f.full_name|default:f.username|default:"Unassigned" }}{% endwith %} · {{ course.semester }}
+        {% with f=course.faculty.first %}{% if f %}{{ f.full_name|default:f.username }}{% else %}Unassigned{% endif %}{% endwith %} · {{ course.semester }}
       </div>
     </div>
     {% endfor %}

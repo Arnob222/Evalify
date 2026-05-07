@@ -1,0 +1,172 @@
+{% extends 'dept_head_portal/base.html' %}
+{% block nav_escar %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">ESCAR Report</div>
+    <div class="page-sub">Educational Standards, Compliance, and Assessment Review</div>
+  </div>
+</div>
+
+<div class="filter-bar" style="margin-bottom:24px;">
+  <span style="font-size:13px;font-weight:600;color:var(--gray);">Course:</span>
+  <select onchange="location.href='?course='+this.value" class="form-control" style="width:340px;">
+    <option value="">— Select a Course —</option>
+    {% for c in courses %}
+    <option value="{{ c.id }}" {% if c == selected_course %}selected{% endif %}>{{ c.code }} — {{ c.name }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+{% if selected_course %}
+
+<!-- Stats -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+  <div class="stat-card">
+    <div><div class="stat-label">Total Enrolled</div><div class="stat-val">{{ total_enrolled }}</div></div>
+    <div class="stat-icon-wrap si-blue">&#127891;</div>
+  </div>
+  <div class="stat-card">
+    <div><div class="stat-label">Participated</div><div class="stat-val">{{ total_participated }}</div></div>
+    <div class="stat-icon-wrap si-green">&#9989;</div>
+  </div>
+  <div class="stat-card">
+    <div><div class="stat-label">Absent</div><div class="stat-val">{{ total_absent }}</div></div>
+    <div class="stat-icon-wrap si-orange">&#10060;</div>
+  </div>
+</div>
+
+{% if rows %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+  <!-- CLO Table -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">CLO Attainment</span>
+      <span style="font-size:12px;color:var(--gray);">{{ selected_course.code }}</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>CLO</th>
+            <th>Assessed</th>
+            <th>Passed</th>
+            <th>Attainment</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}{% if row.clo %}
+          <tr>
+            <td>
+              <span class="badge badge-teal" style="margin-bottom:4px;">{{ row.clo.code }}</span>
+              <div style="font-size:11px;color:var(--gray);max-width:180px;line-height:1.4;">{{ row.clo.description }}</div>
+              {% if row.clo.action_plan %}
+              <div style="margin-top:6px;padding:6px 8px;background:#f0fdf4;border-left:3px solid var(--green);border-radius:4px;font-size:11px;color:#166534;line-height:1.4;">
+                <strong>Action Plan:</strong> {{ row.clo.action_plan }}
+              </div>
+              {% endif %}
+            </td>
+            <td style="font-weight:600;">{{ row.clo.students_assessed }}</td>
+            <td style="font-weight:600;color:var(--green);">{{ row.clo.students_passed }}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;max-width:80px;background:#e2e8f0;border-radius:20px;height:7px;overflow:hidden;">
+                  <div style="height:100%;border-radius:20px;width:{% if row.clo.attainment_pct > 100 %}100{% else %}{{ row.clo.attainment_pct }}{% endif %}%;background:{% if row.clo.attained %}var(--green){% else %}var(--red){% endif %};"></div>
+                </div>
+                <span style="font-weight:700;font-size:13px;">{{ row.clo.attainment_pct }}%</span>
+              </div>
+            </td>
+            <td>
+              {% if row.clo.attained %}
+              <span class="badge badge-green">Attained</span>
+              {% else %}
+              <span class="badge badge-red">Not Attained</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endif %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PLO Table -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">PLO Attainment</span>
+      <span style="font-size:12px;color:var(--gray);">{{ selected_course.code }}</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>PLO</th>
+            <th>Assessed</th>
+            <th>Passed</th>
+            <th>Attainment</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}{% if row.plo %}
+          <tr>
+            <td>
+              <span class="badge badge-violet" style="margin-bottom:4px;">{{ row.plo.code }}</span>
+              <div style="font-size:11px;color:var(--gray);max-width:180px;line-height:1.4;">{{ row.plo.description }}</div>
+              {% if row.plo.action_plan %}
+              <div style="margin-top:6px;padding:6px 8px;background:var(--violet-light);border-left:3px solid var(--violet);border-radius:4px;font-size:11px;color:var(--violet-dark);line-height:1.4;">
+                <strong>Action Plan:</strong> {{ row.plo.action_plan }}
+              </div>
+              {% endif %}
+            </td>
+            <td style="font-weight:600;">{{ row.plo.students_assessed }}</td>
+            <td style="font-weight:600;color:var(--green);">{{ row.plo.students_passed }}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;max-width:80px;background:#e2e8f0;border-radius:20px;height:7px;overflow:hidden;">
+                  <div style="height:100%;border-radius:20px;width:{% if row.plo.attainment_pct > 100 %}100{% else %}{{ row.plo.attainment_pct }}{% endif %}%;background:{% if row.plo.attained %}var(--green){% else %}var(--red){% endif %};"></div>
+                </div>
+                <span style="font-weight:700;font-size:13px;">{{ row.plo.attainment_pct }}%</span>
+              </div>
+            </td>
+            <td>
+              {% if row.plo.attained %}
+              <span class="badge badge-green">Attained</span>
+              {% else %}
+              <span class="badge badge-red">Not Attained</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endif %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% else %}
+<div class="panel">
+  <div class="panel-body">
+    <div class="empty-state">
+      <div class="empty-icon">&#128196;</div>
+      <div class="empty-title">No ESCAR data available</div>
+      <div class="empty-sub">This course has no published assessments with graded CLOs yet.</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="panel">
+  <div class="panel-body">
+    <div class="empty-state">
+      <div class="empty-icon">&#128196;</div>
+      <div class="empty-title">Select a course to view the ESCAR report</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

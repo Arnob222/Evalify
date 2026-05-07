@@ -78,6 +78,19 @@
         </select>
       </div>
 
+      <div id="annSectionWrap" style="display:none;" class="form-group">
+        <label class="form-label">Sections</label>
+        <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0;">
+            <input type="checkbox" id="annAllSections" checked onchange="toggleAnnSections(this)"
+                   style="accent-color:var(--teal);width:15px;height:15px;">
+            <span style="font-size:13px;font-weight:600;">All sections (course-wide)</span>
+          </label>
+          <div id="annSectionCheckboxes" style="display:none;margin-top:10px;"></div>
+        </div>
+        <div class="form-hint">Uncheck "All sections" to target specific sections only.</div>
+      </div>
+
       <div id="annError" style="color:#ef4444;font-size:13px;display:none;padding:8px 12px;background:#fee2e2;border-radius:6px;"></div>
     </div>
     <div class="modal-foot">
@@ -91,6 +104,43 @@
 
 {% block scripts %}
 <script>
+/* ── Per-course sections data for section picker ── */
+const ANN_COURSE_SECTIONS = {};
+{% for sec in all_faculty_sections %}
+ANN_COURSE_SECTIONS[{{ sec.course_id }}] = ANN_COURSE_SECTIONS[{{ sec.course_id }}] || [];
+ANN_COURSE_SECTIONS[{{ sec.course_id }}].push({ id: {{ sec.id }}, name: "{{ sec.name }}", batch: "{{ sec.batch }}", code: "{{ sec.code }}" });
+{% endfor %}
+
+document.getElementById('annCourse').addEventListener('change', function() {
+  const courseId = parseInt(this.value);
+  const secs = ANN_COURSE_SECTIONS[courseId] || [];
+  const wrap = document.getElementById('annSectionWrap');
+  if (secs.length >= 2 && courseId) {
+    const container = document.getElementById('annSectionCheckboxes');
+    container.innerHTML = '';
+    secs.forEach(s => {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 0;font-size:13px;';
+      label.innerHTML = `
+        <input type="checkbox" class="ann-sec-cb" value="${s.id}"
+               style="accent-color:var(--teal);width:14px;height:14px;">
+        <span>Section ${s.name}</span>
+        <span style="font-size:11px;color:var(--gray);">${s.batch} · ${s.code}</span>
+      `;
+      container.appendChild(label);
+    });
+    document.getElementById('annAllSections').checked = true;
+    container.style.display = 'none';
+    wrap.style.display = 'block';
+  } else {
+    wrap.style.display = 'none';
+  }
+});
+
+function toggleAnnSections(cb) {
+  document.getElementById('annSectionCheckboxes').style.display = cb.checked ? 'none' : 'block';
+}
+
 async function submitAnn() {
   const course_id = document.getElementById('annCourse').value;
   const title = document.getElementById('annTitle').value.trim();
@@ -105,8 +155,17 @@ async function submitAnn() {
   }
   errEl.style.display = 'none';
 
+  let section_ids = [];
+  const annSectionWrap = document.getElementById('annSectionWrap');
+  if (annSectionWrap.style.display !== 'none') {
+    const allSections = document.getElementById('annAllSections').checked;
+    if (!allSections) {
+      section_ids = [...document.querySelectorAll('.ann-sec-cb:checked')].map(c => parseInt(c.value));
+    }
+  }
+
   const res = await apiPost("{% url 'create_announcement' %}", {
-    course_id, title, content, priority
+    course_id, title, content, priority, section_ids
   });
 
   if (res.success) {

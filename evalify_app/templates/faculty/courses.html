@@ -97,11 +97,6 @@
                        cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--gray);">
           👥 Students ({{ course.enrollments.count }})
         </button>
-        <button onclick="switchCTab({{ course.id }},'sections')" id="ctab-sections-{{ course.id }}"
-                style="padding:12px 18px;font-size:13px;font-weight:600;border:none;background:none;
-                       cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;color:var(--gray);">
-          &#128203; My Sections
-        </button>
       </div>
 
       <!-- CLOs tab -->
@@ -177,6 +172,27 @@
             <button class="btn btn-outline btn-sm" onclick="openRangeModal({{ course.id }})" style="color:var(--teal);border-color:var(--teal);">+ Add by ID Range</button>
           </div>
         </div>
+
+        <!-- Section filter tabs — shown only when faculty has 2+ sections in this course -->
+        <div id="sec-tab-bar-{{ course.id }}" style="display:none;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:12px;color:var(--gray);font-weight:600;margin-right:4px;">Section:</span>
+            <button onclick="filterBySection({{ course.id }}, 0)" id="sectab-{{ course.id }}-0"
+                    style="padding:5px 14px;font-size:12px;font-weight:600;border-radius:20px;cursor:pointer;
+                           border:2px solid var(--teal);background:var(--teal);color:#fff;transition:all .15s;">
+              All
+            </button>
+            {% for sec in my_sections %}{% if sec.course_id == course.id %}
+            <button onclick="filterBySection({{ course.id }}, {{ sec.id }})" id="sectab-{{ course.id }}-{{ sec.id }}"
+                    style="padding:5px 14px;font-size:12px;font-weight:600;border-radius:20px;cursor:pointer;
+                           border:2px solid var(--border);background:#fff;color:var(--gray);transition:all .15s;">
+              Section {{ sec.name }}
+              <span style="background:#f3f4f6;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:3px;">{{ sec.students.count }}</span>
+            </button>
+            {% endif %}{% endfor %}
+          </div>
+        </div>
+
         {% if course.enrollments.count > 0 %}
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -190,7 +206,9 @@
             </thead>
             <tbody>
               {% for enroll in course.enrollments.all %}
-              <tr style="border-bottom:1px solid #f3f4f6;" id="srow-{{ course.id }}-{{ enroll.student.id }}">
+              <tr style="border-bottom:1px solid #f3f4f6;"
+                  id="srow-{{ course.id }}-{{ enroll.student.id }}"
+                  data-secs="{% for sec in my_sections %}{% if sec.course_id == course.id %}{% for s in sec.students.all %}{% if s.id == enroll.student.id %}{{ sec.id }},{% endif %}{% endfor %}{% endif %}{% endfor %}">
                 <td style="padding:10px 12px;">
                   <div style="display:flex;align-items:center;gap:10px;">
                     <div style="width:32px;height:32px;border-radius:50%;background:var(--teal);color:#fff;
@@ -221,31 +239,6 @@
           No students enrolled yet. Share the enrollment code <strong>{{ course.enrollment_code }}</strong> with students.
         </div>
         {% endif %}
-      </div>
-
-      <!-- Sections tab pane -->
-      <div id="cpane-sections-{{ course.id }}" style="display:none;padding:18px 0;">
-        <div style="font-size:14px;font-weight:700;margin-bottom:14px;">My Sections in {{ course.code }}</div>
-        <div id="sec-cards-{{ course.id }}">
-        {% for sec in my_sections %}{% if sec.course_id == course.id %}
-        <div class="sec-card" style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;">
-          <div style="width:48px;height:48px;border-radius:50%;background:var(--indigo-light);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:var(--indigo);flex-shrink:0;">
-            {{ sec.name }}
-          </div>
-          <div style="flex:1;">
-            <div style="font-weight:700;font-size:14px;">Section {{ sec.name }}</div>
-            <div style="font-size:12px;color:var(--gray);">{{ sec.batch }} &nbsp;·&nbsp; {{ sec.students.count }} student{{ sec.students.count|pluralize }}</div>
-          </div>
-          <span class="badge badge-indigo">{{ sec.batch }}</span>
-        </div>
-        {% endif %}{% endfor %}
-        </div>
-        <script>
-        if(!document.getElementById('sec-cards-{{ course.id }}').querySelector('.sec-card')){
-          document.getElementById('sec-cards-{{ course.id }}').innerHTML =
-            '<div style="color:var(--gray);font-size:13px;padding:12px 0;">You are not assigned to any sections in this course.</div>';
-        }
-        </script>
       </div>
 
     </div><!-- /inner padding -->
@@ -439,6 +432,11 @@
         <label class="form-label">Student Email</label>
         <input type="email" id="studentEmail" class="form-control" placeholder="student@email.com">
       </div>
+      <div id="addStudentSectionWrap" style="display:none;" class="form-group">
+        <label class="form-label">Section <span style="color:#ef4444;">*</span></label>
+        <select id="addStudentSection" class="form-control"></select>
+        <div class="form-hint">Select which section to add the student to.</div>
+      </div>
       <div id="studentMsg" style="font-size:13px;margin-top:6px;display:none;padding:8px 12px;border-radius:6px;"></div>
     </div>
     <div class="modal-foot">
@@ -459,6 +457,11 @@
       <input type="hidden" id="rangeCourseId">
       <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;font-size:12px;color:#0369a1;margin-bottom:16px;">
         Enrols all registered students whose email matches <strong>{ID}@uap-bd.edu</strong> within the given range.
+      </div>
+      <div id="rangeSectionWrap" style="display:none;" class="form-group">
+        <label class="form-label">Section <span style="color:#ef4444;">*</span></label>
+        <select id="rangeSection" class="form-control"></select>
+        <div class="form-hint">Select which section to add these students to.</div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -503,7 +506,7 @@ function toggleCourse(id) {
 
 /* ── Per-course tab switching ── */
 function switchCTab(courseId, tab) {
-  ['clo','plo','students','sections'].forEach(t => {
+  ['clo','plo','students'].forEach(t => {
     const pane = document.getElementById('cpane-' + t + '-' + courseId);
     const btn  = document.getElementById('ctab-' + t + '-' + courseId);
     if (!pane || !btn) return;
@@ -618,11 +621,53 @@ async function quickAddPlo() {
   }
 }
 
+/* ── Course sections data for modals ── */
+const COURSE_SECTIONS = {};
+{% for course in courses %}
+COURSE_SECTIONS[{{ course.id }}] = [{% for sec in my_sections %}{% if sec.course_id == course.id %}{ id: {{ sec.id }}, name: "{{ sec.name }}", batch: "{{ sec.batch }}", code: "{{ sec.code }}" },{% endif %}{% endfor %}];
+{% endfor %}
+
+/* ── Section filter tabs in Students pane ── */
+document.querySelectorAll('[id^="sec-tab-bar-"]').forEach(bar => {
+  const courseId = bar.id.replace('sec-tab-bar-', '');
+  const sectionBtns = bar.querySelectorAll(`[id^="sectab-${courseId}-"]`).length - 1;
+  if (sectionBtns >= 2) bar.style.display = 'block';
+});
+
+function filterBySection(courseId, sectionId) {
+  document.querySelectorAll(`[id^="sectab-${courseId}-"]`).forEach(btn => {
+    const isActive = btn.id === `sectab-${courseId}-${sectionId}`;
+    btn.style.background   = isActive ? 'var(--teal)' : '#fff';
+    btn.style.color        = isActive ? '#fff' : 'var(--gray)';
+    btn.style.borderColor  = isActive ? 'var(--teal)' : 'var(--border)';
+  });
+  const tbody = document.querySelector(`#cpane-students-${courseId} tbody`);
+  if (!tbody) return;
+  tbody.querySelectorAll('tr').forEach(row => {
+    if (sectionId === 0) {
+      row.style.display = '';
+    } else {
+      const secs = (row.dataset.secs || '').split(',').map(s => parseInt(s)).filter(Boolean);
+      row.style.display = secs.includes(sectionId) ? '' : 'none';
+    }
+  });
+}
+
 /* ── Student (manual add) ── */
 function openAddStudent(courseId) {
   document.getElementById('studentCourseId').value = courseId;
   document.getElementById('studentEmail').value = '';
   document.getElementById('studentMsg').style.display = 'none';
+  const secs = COURSE_SECTIONS[courseId] || [];
+  const wrap = document.getElementById('addStudentSectionWrap');
+  if (secs.length >= 2) {
+    const sel = document.getElementById('addStudentSection');
+    sel.innerHTML = '<option value="">— Select section —</option>';
+    secs.forEach(s => sel.innerHTML += `<option value="${s.id}">Section ${s.name} · ${s.batch} (${s.code})</option>`);
+    wrap.style.display = 'block';
+  } else {
+    wrap.style.display = 'none';
+  }
   openModal('addStudentModal');
 }
 
@@ -631,7 +676,18 @@ async function submitAddStudent() {
   const email    = document.getElementById('studentEmail').value.trim();
   const msg      = document.getElementById('studentMsg');
   if (!email) return;
-  const res = await apiPost(`/faculty/courses/${courseId}/add-student/`, { email });
+  const sectionWrap = document.getElementById('addStudentSectionWrap');
+  let section_id = null;
+  if (sectionWrap.style.display !== 'none') {
+    section_id = document.getElementById('addStudentSection').value || null;
+    if (!section_id) {
+      const msg2 = document.getElementById('studentMsg');
+      msg2.style.cssText = 'display:block;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:8px 12px;border-radius:6px;font-size:13px;';
+      msg2.textContent = 'Please select a section.';
+      return;
+    }
+  }
+  const res = await apiPost(`/faculty/courses/${courseId}/add-student/`, { email, section_id });
   msg.style.display = 'block';
   if (res.success) {
     msg.style.cssText = 'display:block;background:#dcfce7;color:#166534;border:1px solid #86efac;padding:8px 12px;border-radius:6px;font-size:13px;';
@@ -673,6 +729,16 @@ function openRangeModal(courseId) {
   document.getElementById('rangeResult').style.display = 'none';
   document.getElementById('rangeSubmitBtn').disabled = false;
   document.getElementById('rangeSubmitBtn').textContent = 'Enrol Students';
+  const secs = COURSE_SECTIONS[courseId] || [];
+  const wrap = document.getElementById('rangeSectionWrap');
+  if (secs.length >= 2) {
+    const sel = document.getElementById('rangeSection');
+    sel.innerHTML = '<option value="">— Select section —</option>';
+    secs.forEach(s => sel.innerHTML += `<option value="${s.id}">Section ${s.name} · ${s.batch} (${s.code})</option>`);
+    wrap.style.display = 'block';
+  } else {
+    wrap.style.display = 'none';
+  }
   openModal('addRangeModal');
 }
 
@@ -708,9 +774,23 @@ async function submitAddRange() {
   btn.disabled = true;
   btn.textContent = 'Processing…';
 
+  const sectionWrap = document.getElementById('rangeSectionWrap');
+  let section_id = null;
+  if (sectionWrap.style.display !== 'none') {
+    section_id = document.getElementById('rangeSection').value || null;
+    if (!section_id) {
+      errEl.textContent = 'Please select a section.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Enrol Students';
+      return;
+    }
+  }
+
   const res = await apiPost(`/faculty/courses/${courseId}/add-students-range/`, {
     from_id: parseInt(fromId),
     to_id:   parseInt(toId),
+    section_id,
   });
 
   btn.disabled = false;

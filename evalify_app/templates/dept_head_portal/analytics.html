@@ -1,4 +1,4 @@
-{% extends 'doa_portal/base.html' %}
+{% extends 'dept_head_portal/base.html' %}
 {% block nav_analytics %}active{% endblock %}
 
 {% block content %}
@@ -25,7 +25,7 @@
     </select>
     <button type="submit" class="btn btn-primary">Filter</button>
     {% if course_name_q or semester_q %}
-    <a href="{% url 'doa_analytics' %}" class="btn btn-outline">Clear</a>
+    <a href="{% url 'dept_head_analytics' %}" class="btn btn-outline">Clear</a>
     {% endif %}
   </div>
   {% if course_name_q or semester_q %}
@@ -56,10 +56,10 @@
   <div class="stat-card">
     <div>
       <div class="stat-label">Course</div>
-      <div style="font-size:20px;font-weight:800;color:var(--indigo);">{{ selected_course.code }}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--violet);">{{ selected_course.code }}</div>
       <div class="stat-sub">{{ selected_course.name }}</div>
     </div>
-    <div class="stat-icon-wrap si-indigo">&#128218;</div>
+    <div class="stat-icon-wrap si-violet">&#128218;</div>
   </div>
   <div class="stat-card">
     <div>
@@ -102,7 +102,7 @@
         <tbody>
           {% for p in plo_attainment %}
           <tr>
-            <td><span class="badge badge-indigo">{{ p.code }}</span></td>
+            <td><span class="badge badge-violet">{{ p.code }}</span></td>
             <td style="font-size:12.5px;max-width:300px;">{{ p.description }}</td>
             <td style="font-weight:600;">{{ p.achieved }}</td>
             <td style="color:var(--gray);">{{ p.present }}</td>

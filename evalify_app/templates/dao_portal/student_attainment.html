@@ -1,10 +1,10 @@
-{% extends 'doa_portal/base.html' %}
+﻿{% extends 'dao_portal/base.html' %}
 {% block nav_students %}active{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div style="display:flex;align-items:center;gap:14px;">
-    <a href="{% url 'doa_students' %}" class="btn btn-outline btn-sm">&#8592; Back</a>
+    <a href="{% url 'dao_students' %}" class="btn btn-outline btn-sm">&#8592; Back</a>
     <div>
       <div class="page-title">{{ student.full_name|default:student.username }}</div>
       <div class="page-sub">Registration ID: <strong>{{ student.username }}</strong> &nbsp;|&nbsp; {{ student.email }}</div>

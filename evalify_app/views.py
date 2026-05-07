@@ -27,8 +27,10 @@ def home(request):
         return redirect('student_dashboard')
     elif request.user.role == 'admin':
         return redirect('admin_dashboard')
-    elif request.user.role == 'doa':
-        return redirect('doa_dashboard')
+    elif request.user.role == 'dao':
+        return redirect('dao_dashboard')
+    elif request.user.role == 'dept_head':
+        return redirect('dept_head_dashboard')
     return render(request, 'homepage.html')
 
 
@@ -249,7 +251,7 @@ def archive_course(request, course_id):
 
 @faculty_required
 def add_course(request):
-    return JsonResponse({'error': 'Course creation is managed by DOA.'}, status=403)
+    return JsonResponse({'error': 'Course creation is managed by DAO.'}, status=403)
 
 
 @faculty_required
@@ -291,6 +293,11 @@ def add_student_to_course(request, course_id):
         try:
             student = User.objects.get(email=data['email'], role='student')
             Enrollment.objects.get_or_create(student=student, course=course)
+            section_id = data.get('section_id')
+            if section_id:
+                section = Section.objects.filter(id=int(section_id), course=course, faculty=request.user).first()
+                if section:
+                    section.students.add(student)
             return JsonResponse({'success': True, 'name': student.full_name or student.username})
         except User.DoesNotExist:
             return JsonResponse({'error': 'Student not found'}, status=404)
@@ -319,6 +326,14 @@ def add_students_by_range(request, course_id):
     if to_id - from_id >= 500:
         return JsonResponse({'error': 'Range too large — maximum 500 students at once.'}, status=400)
 
+    section = None
+    section_id = data.get('section_id')
+    if section_id:
+        try:
+            section = Section.objects.filter(id=int(section_id), course=course, faculty=request.user).first()
+        except (ValueError, TypeError):
+            pass
+
     added, already_enrolled, not_found = [], [], []
     for reg_id in range(from_id, to_id + 1):
         email = f'{reg_id}@uap-bd.edu'
@@ -326,6 +341,8 @@ def add_students_by_range(request, course_id):
             student = User.objects.get(email=email, role='student')
             _, created = Enrollment.objects.get_or_create(student=student, course=course)
             (added if created else already_enrolled).append(reg_id)
+            if section:
+                section.students.add(student)
         except User.DoesNotExist:
             not_found.append(reg_id)
 
@@ -370,6 +387,9 @@ def create_assessment(request):
                 question.clos.set(CLO.objects.filter(id__in=q['clo_ids']))
             total += int(q['max_marks'])
         Assessment.objects.filter(pk=assessment.pk).update(total_marks=total)
+        section_ids = data.get('section_ids', [])
+        if section_ids:
+            assessment.sections.set(Section.objects.filter(id__in=section_ids, course=course))
         return JsonResponse({'success': True, 'id': assessment.id})
     return JsonResponse({'error': 'POST required'}, status=400)
 
@@ -761,6 +781,96 @@ def faculty_analytics(request):
     })
 
 
+def _compute_escar(selected_course):
+    """Compute ESCAR data for a course. Returns (rows, total_enrolled, total_participated, total_absent)."""
+    if not selected_course:
+        return [], 0, 0, 0
+
+    assessments = Assessment.objects.filter(course=selected_course, status='published')
+    enrolled_students = list(Enrollment.objects.filter(course=selected_course).select_related('student'))
+    total_enrolled = len(enrolled_students)
+
+    all_q_ids = list(Question.objects.filter(assessment__in=assessments).values_list('id', flat=True))
+    all_grades = QuestionGrade.objects.filter(
+        question_id__in=all_q_ids,
+        submission__assessment__course=selected_course,
+    ).values('submission__student_id', 'question_id', 'marks_obtained')
+
+    grade_map = {}
+    for g in all_grades:
+        sid = g['submission__student_id']
+        grade_map.setdefault(sid, {})[g['question_id']] = g['marks_obtained']
+
+    participated_ids = set(grade_map.keys())
+    total_participated = len(participated_ids)
+    total_absent = total_enrolled - total_participated
+
+    q_maxmarks = {q.id: q.max_marks for q in Question.objects.filter(id__in=all_q_ids)}
+
+    def _attainment(q_ids, q_marks_map):
+        s_passed = 0; s_assessed = 0
+        for enrollment in enrolled_students:
+            sid = enrollment.student_id
+            if sid not in participated_ids:
+                continue
+            sg = grade_map.get(sid, {})
+            student_q_grades = {qid: sg[qid] for qid in q_ids if qid in sg}
+            if not student_q_grades:
+                continue
+            student_max = sum(q_marks_map.get(qid, 0) for qid in student_q_grades)
+            if student_max == 0:
+                continue
+            obtained = sum(student_q_grades.values())
+            s_assessed += 1
+            if (obtained / student_max * 100) >= 40:
+                s_passed += 1
+        pct = round((s_passed / s_assessed * 100) if s_assessed > 0 else 0, 2)
+        return s_passed, s_assessed, pct
+
+    clos_data = []
+    for clo in selected_course.clos.all():
+        q_ids = list(Question.objects.filter(assessment__in=assessments, clos=clo).values_list('id', flat=True))
+        q_marks_map = {qid: q_maxmarks[qid] for qid in q_ids if qid in q_maxmarks}
+        s_passed, s_assessed, attainment_pct = _attainment(q_ids, q_marks_map) if q_ids else (0, 0, 0.0)
+        plan_obj = CLOActionPlan.objects.filter(course=selected_course, clo=clo).first()
+        clos_data.append({
+            'id': clo.id, 'code': clo.code, 'description': clo.description,
+            'students_assessed': s_assessed, 'students_passed': s_passed,
+            'attainment_pct': attainment_pct, 'attained': attainment_pct >= 60,
+            'action_plan': plan_obj.action_plan if plan_obj else '',
+        })
+
+    plo_q_map = defaultdict(set)
+    plo_obj_map = {}
+    for clo in selected_course.clos.all():
+        q_ids = list(Question.objects.filter(assessment__in=assessments, clos=clo).values_list('id', flat=True))
+        for plo in clo.plos.all():
+            plo_q_map[plo.id].update(q_ids)
+            plo_obj_map[plo.id] = plo
+
+    plos_data = []
+    for plo_id, q_id_set in plo_q_map.items():
+        plo = plo_obj_map[plo_id]
+        q_ids = list(q_id_set)
+        if not q_ids:
+            continue
+        q_marks_map = {qid: q_maxmarks[qid] for qid in q_ids if qid in q_maxmarks}
+        s_passed, s_assessed, attainment_pct = _attainment(q_ids, q_marks_map)
+        plan_obj = PLOActionPlan.objects.filter(course=selected_course, plo=plo).first()
+        plos_data.append({
+            'id': plo.id, 'code': plo.code, 'description': plo.description,
+            'students_assessed': s_assessed, 'students_passed': s_passed,
+            'attainment_pct': attainment_pct, 'attained': attainment_pct >= 60,
+            'action_plan': plan_obj.action_plan if plan_obj else '',
+        })
+
+    max_len = max(len(clos_data), len(plos_data), 1)
+    rows = [{'clo': clos_data[i] if i < len(clos_data) else None,
+             'plo': plos_data[i] if i < len(plos_data) else None}
+            for i in range(max_len)]
+    return rows, total_enrolled, total_participated, total_absent
+
+
 @faculty_required
 def faculty_escar(request):
     courses = Course.objects.filter(faculty=request.user, is_active=True)
@@ -913,11 +1023,19 @@ def save_escar_plan(request):
 @faculty_required
 def faculty_announcements(request):
     courses = Course.objects.filter(faculty=request.user, is_active=True)
+    course_id = request.GET.get('course')
+    selected_course = None
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id, faculty=request.user, is_active=True)
     announcements = Announcement.objects.filter(
         course__in=courses
     ).select_related('course').order_by('-created_at')
+    all_faculty_sections = Section.objects.filter(faculty=request.user).select_related('course').order_by('course__code', 'name')
     return render(request, 'faculty/announcements.html', {
-        'announcements': announcements, 'courses': courses
+        'announcements': announcements,
+        'courses': courses,
+        'selected_course': selected_course,
+        'all_faculty_sections': all_faculty_sections,
     })
 
 
@@ -930,7 +1048,10 @@ def create_announcement(request):
             course=course, title=data['title'], content=data['content'],
             priority=data.get('priority', 'medium'), created_by=request.user
         )
-        notify_announcement(ann) 
+        section_ids = data.get('section_ids', [])
+        if section_ids:
+            ann.sections.set(Section.objects.filter(id__in=section_ids, course=course))
+        notify_announcement(ann)
         return JsonResponse({'success': True, 'id': ann.id})
     return JsonResponse({'error': 'POST required'}, status=400)
 
@@ -967,7 +1088,13 @@ def student_dashboard(request):
         avg_grade = round(total_pct / graded.count(), 1)
 
     recent_grades = graded.order_by('-submitted_at')[:5]
-    announcements = Announcement.objects.filter(course__in=courses).order_by('-created_at')[:4]
+    from django.db.models import Q as _Q
+    student_section_ids = Section.objects.filter(
+        course__in=courses, students=request.user
+    ).values_list('id', flat=True)
+    announcements = Announcement.objects.filter(course__in=courses).filter(
+        _Q(sections__isnull=True) | _Q(sections__id__in=student_section_ids)
+    ).distinct().order_by('-created_at')[:4]
 
     my_sections = Section.objects.filter(students=request.user).select_related('course').prefetch_related('faculty').order_by('course__code', 'batch', 'name')
 
@@ -1275,11 +1402,13 @@ def faculty_materials(request):
         materials = StudyMaterial.objects.filter(
             course=selected_course
         ).order_by('-uploaded_at')
+        faculty_sections = list(Section.objects.filter(course=selected_course, faculty=request.user).order_by('name'))
         return render(request, 'faculty/materials.html', {
             'selected_course': selected_course,
             'courses': courses,
             'materials': materials,
             'material_count': materials.count(),
+            'faculty_sections': faculty_sections,
         })
  
     # Course list view — annotate counts
@@ -1324,6 +1453,9 @@ def upload_material(request):
             uploaded_by=request.user,
             is_visible=True,
         )
+        section_ids = request.POST.getlist('section_ids')
+        if section_ids:
+            material.sections.set(Section.objects.filter(id__in=section_ids, course=course))
         return JsonResponse({
             'success':       True,
             'id':            material.id,
@@ -1373,11 +1505,14 @@ def student_materials(request):
             from django.shortcuts import redirect
             return redirect('student_materials')
  
-        # Only show visible materials
+        student_sections = Section.objects.filter(course=selected_course, students=request.user)
+        from django.db.models import Q
         materials = StudyMaterial.objects.filter(
             course=selected_course,
-            is_visible=True,         # ← students only see visible ones
-        ).order_by('-uploaded_at')
+            is_visible=True,
+        ).filter(
+            Q(sections__isnull=True) | Q(sections__in=student_sections)
+        ).distinct().order_by('-uploaded_at')
  
         return render(request, 'student/materials.html', {
             'selected_course': selected_course,
@@ -1430,6 +1565,7 @@ def faculty_assignments(request):
         for a in drafts + published_list:
             a.submission_count = a.submissions.count()
             a.question_count = a.questions.count()
+        faculty_sections = list(Section.objects.filter(course=selected_course, faculty=request.user).order_by('name'))
         return render(request, 'faculty/assignments.html', {
             'selected_course': selected_course,
             'courses': courses,
@@ -1439,6 +1575,7 @@ def faculty_assignments(request):
             'draft_count': len(drafts),
             'published_count': len(published_list),
             'total_subs': sum(a.submission_count for a in published_list),
+            'faculty_sections': faculty_sections,
         })
 
     # Course list view 
@@ -1544,6 +1681,10 @@ def create_assignment(request):
         assignment.total_marks = total if total > 0 else manual_total
         assignment.save()
 
+        section_ids = data.get('section_ids', [])
+        if section_ids:
+            assignment.sections.set(Section.objects.filter(id__in=section_ids, course=course))
+
         if status == 'published':
             notify_new_assignment(assignment)
 
@@ -1610,6 +1751,7 @@ def get_assessment_data(request, assignment_id):
         'max_late_days':        assessment.max_late_days,
         'late_deduction_type':  assessment.late_deduction_type,
         'late_deduction_value': assessment.late_deduction_value,
+        'section_ids': list(assessment.sections.values_list('id', flat=True)),
         'questions': questions,
     })
 
@@ -1685,6 +1827,8 @@ def edit_assessment(request, assignment_id):
     manual_total = int(data.get('total_marks', 0))
     assessment.total_marks = total if total > 0 else manual_total
     assessment.save()
+    section_ids = data.get('section_ids', [])
+    assessment.sections.set(Section.objects.filter(id__in=section_ids, course=assessment.course))
     return JsonResponse({'success': True})
 
 
@@ -1731,9 +1875,13 @@ def student_course_assignments(request, course_id):
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
     course = get_object_or_404(Course, id=course_id)
+    student_sections = Section.objects.filter(course=course, students=request.user)
+    from django.db.models import Q
     assessments = Assessment.objects.filter(
         course=course, status='published'
-    ).prefetch_related('questions__clos', 'questions__plos').order_by('-created_at')
+    ).filter(
+        Q(sections__isnull=True) | Q(sections__in=student_sections)
+    ).distinct().prefetch_related('questions__clos', 'questions__plos').order_by('-created_at')
     submissions = {
         s.assessment_id: s
         for s in Submission.objects.filter(student=request.user, assessment__in=assessments)
@@ -2594,23 +2742,43 @@ def admin_delete_material(request, material_id):
     return redirect('admin_materials')
 
 
-# DOA PORTAL VIEWS
+@admin_required
+def admin_escar(request):
+    courses = Course.objects.all().order_by('code')
+    selected_course = None
+    course_id = request.GET.get('course')
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id)
+    elif courses.exists():
+        selected_course = courses.first()
+    rows, total_enrolled, total_participated, total_absent = _compute_escar(selected_course)
+    return render(request, 'admin_portal/escar.html', {
+        'courses': courses,
+        'selected_course': selected_course,
+        'rows': rows,
+        'total_enrolled': total_enrolled,
+        'total_participated': total_participated,
+        'total_absent': total_absent,
+    })
 
-def doa_required(view_func):
+
+# DAO PORTAL VIEWS
+
+def dao_required(view_func):
     def wrapper(request, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect('sign_in_html')
-        if request.user.role != 'doa':
+        if request.user.role != 'dao':
             return redirect('home')
         return view_func(request, *args, **kwargs)
     wrapper.__name__ = view_func.__name__
     return wrapper
 
 
-@doa_required
-def doa_dashboard(request):
+@dao_required
+def dao_dashboard(request):
     from datetime import date as dt_date
-    return render(request, 'doa_portal/dashboard.html', {
+    return render(request, 'dao_portal/dashboard.html', {
         'today':          dt_date.today().strftime('%B %d, %Y'),
         'total_users':    User.objects.count(),
         'total_faculty':  User.objects.filter(role='faculty').count(),
@@ -2622,14 +2790,14 @@ def doa_dashboard(request):
     })
 
 
-@doa_required
-def doa_users(request):
+@dao_required
+def dao_users(request):
     users = User.objects.all().order_by('-date_joined')
-    return render(request, 'doa_portal/users.html', {'users': users})
+    return render(request, 'dao_portal/users.html', {'users': users})
 
 
-@doa_required
-def doa_create_user(request):
+@dao_required
+def dao_create_user(request):
     if request.method == 'POST':
         full_name = request.POST.get('full_name', '').strip()
         email     = request.POST.get('email', '').strip()
@@ -2639,10 +2807,10 @@ def doa_create_user(request):
             role = 'student'
         if User.objects.filter(email=email).exists():
             messages.error(request, 'Email already registered.')
-            return redirect('doa_users')
+            return redirect('dao_users')
         if len(password) < 8:
             messages.error(request, 'Password must be at least 8 characters.')
-            return redirect('doa_users')
+            return redirect('dao_users')
         username = email.split('@')[0]
         base = username; i = 1
         while User.objects.filter(username=username).exists():
@@ -2652,11 +2820,11 @@ def doa_create_user(request):
             full_name=full_name, role=role,
         )
         messages.success(request, f'User {full_name} created successfully.')
-    return redirect('doa_users')
+    return redirect('dao_users')
 
 
-@doa_required
-def doa_edit_user(request, user_id):
+@dao_required
+def dao_edit_user(request, user_id):
     u = get_object_or_404(User, id=user_id)
     if request.method == 'POST':
         u.full_name = request.POST.get('full_name', u.full_name).strip()
@@ -2668,32 +2836,32 @@ def doa_edit_user(request, user_id):
         if pw:
             if len(pw) < 8:
                 messages.error(request, 'Password must be at least 8 characters.')
-                return redirect('doa_users')
+                return redirect('dao_users')
             u.set_password(pw)
         u.save()
         messages.success(request, f'User {u.full_name} updated.')
-    return redirect('doa_users')
+    return redirect('dao_users')
 
 
-@doa_required
-def doa_toggle_user(request, user_id):
+@dao_required
+def dao_toggle_user(request, user_id):
     if request.method == 'POST':
         u = get_object_or_404(User, id=user_id)
         u.is_active = not u.is_active
         u.save()
         status = 'activated' if u.is_active else 'deactivated'
         messages.success(request, f'User {u.full_name or u.username} {status}.')
-    return redirect('doa_users')
+    return redirect('dao_users')
 
 
-@doa_required
-def doa_delete_user(request, user_id):
+@dao_required
+def dao_delete_user(request, user_id):
     if request.method == 'POST':
         u = get_object_or_404(User, id=user_id)
         name = u.full_name or u.username
         u.delete()
         messages.success(request, f'User {name} deleted.')
-    return redirect('doa_users')
+    return redirect('dao_users')
 
 
 SEMESTER_OPTIONS = [
@@ -2701,12 +2869,12 @@ SEMESTER_OPTIONS = [
     'Spring 2025', 'Fall 2025', 'Spring 2026', 'Fall 2026',
 ]
 
-@doa_required
-def doa_courses(request):
+@dao_required
+def dao_courses(request):
     courses = Course.objects.prefetch_related('faculty', 'enrollments', 'assessments', 'sections').order_by('-created_at')
     semesters = Course.objects.values_list('semester', flat=True).distinct().order_by('semester')
     faculty_list = User.objects.filter(role='faculty').order_by('full_name')
-    return render(request, 'doa_portal/courses.html', {
+    return render(request, 'dao_portal/courses.html', {
         'courses': courses,
         'semesters': semesters,
         'faculty_list': faculty_list,
@@ -2714,8 +2882,8 @@ def doa_courses(request):
     })
 
 
-@doa_required
-def doa_create_course(request):
+@dao_required
+def dao_create_course(request):
     if request.method == 'POST':
         code         = request.POST.get('code', '').strip()
         name         = request.POST.get('name', '').strip()
@@ -2724,7 +2892,7 @@ def doa_create_course(request):
         semester     = request.POST.get('semester', 'Fall 2025')
         if not code or not name:
             messages.error(request, 'Course code and name are required.')
-            return redirect('doa_courses')
+            return redirect('dao_courses')
         course = Course.objects.create(
             code=code, name=name, description=description,
             credit_hours=credit_hours, semester=semester,
@@ -2743,12 +2911,12 @@ def doa_create_course(request):
         msg += f' with {created_sections} section(s).' if created_sections else '.'
         msg += ' Assign faculty to sections below.'
         messages.success(request, msg)
-        return redirect('doa_assign_faculty_page', course_id=course.id)
-    return redirect('doa_courses')
+        return redirect('dao_assign_faculty_page', course_id=course.id)
+    return redirect('dao_courses')
 
 
-@doa_required
-def doa_assign_faculty_page(request, course_id):
+@dao_required
+def dao_assign_faculty_page(request, course_id):
     course = get_object_or_404(Course, id=course_id)
     faculty_list = User.objects.filter(role='faculty').order_by('full_name')
     sections = list(course.sections.prefetch_related('faculty').order_by('batch', 'name'))
@@ -2768,52 +2936,52 @@ def doa_assign_faculty_page(request, course_id):
             all_faculty_ids.update(section.faculty.values_list('id', flat=True))
         course.faculty.set(User.objects.filter(id__in=all_faculty_ids))
         messages.success(request, f'Faculty assignments saved for {course.code}. All course content is preserved.')
-        return redirect('doa_courses')
+        return redirect('dao_courses')
 
     # Attach current faculty directly to each section object for the template
     for sec in sections:
         sec.current_faculty = sec.faculty.first()
 
-    return render(request, 'doa_portal/assign_faculty.html', {
+    return render(request, 'dao_portal/assign_faculty.html', {
         'course': course,
         'faculty_list': faculty_list,
         'sections': sections,
     })
 
 
-@doa_required
-def doa_assign_faculty(request, course_id):
+@dao_required
+def dao_assign_faculty(request, course_id):
     if request.method == 'POST':
         c = get_object_or_404(Course, id=course_id)
         faculty_ids = request.POST.getlist('faculty_ids')
         c.faculty.set(User.objects.filter(id__in=faculty_ids, role='faculty'))
         messages.success(request, f'Faculty assignment for {c.code} updated.')
-    return redirect('doa_courses')
+    return redirect('dao_courses')
 
 
-@doa_required
-def doa_toggle_course_active(request, course_id):
+@dao_required
+def dao_toggle_course_active(request, course_id):
     if request.method == 'POST':
         c = get_object_or_404(Course, id=course_id)
         c.is_active = not c.is_active
         c.save()
         status = 'activated' if c.is_active else 'deactivated'
         messages.success(request, f'Course {c.code} {status}.')
-    return redirect('doa_courses')
+    return redirect('dao_courses')
 
 
-@doa_required
-def doa_delete_course(request, course_id):
+@dao_required
+def dao_delete_course(request, course_id):
     if request.method == 'POST':
         c = get_object_or_404(Course, id=course_id)
         name = c.code
         c.delete()
         messages.success(request, f'Course {name} deleted.')
-    return redirect('doa_courses')
+    return redirect('dao_courses')
 
 
-@doa_required
-def doa_analytics(request):
+@dao_required
+def dao_analytics(request):
     from django.db.models import Q
     all_semesters = Course.objects.values_list('semester', flat=True).distinct().order_by('semester')
 
@@ -2967,7 +3135,7 @@ def doa_analytics(request):
                 'attainment': pct, 'achieved': achieved, 'present': present_count,
             })
 
-    return render(request, 'doa_portal/analytics.html', {
+    return render(request, 'dao_portal/analytics.html', {
         'courses': courses,
         'selected_course': selected_course,
         'plo_attainment': plo_attainment,
@@ -2980,8 +3148,28 @@ def doa_analytics(request):
     })
 
 
-@doa_required
-def doa_students(request):
+@dao_required
+def dao_escar(request):
+    courses = Course.objects.all().order_by('code')
+    selected_course = None
+    course_id = request.GET.get('course')
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id)
+    elif courses.exists():
+        selected_course = courses.first()
+    rows, total_enrolled, total_participated, total_absent = _compute_escar(selected_course)
+    return render(request, 'dao_portal/escar.html', {
+        'courses': courses,
+        'selected_course': selected_course,
+        'rows': rows,
+        'total_enrolled': total_enrolled,
+        'total_participated': total_participated,
+        'total_absent': total_absent,
+    })
+
+
+@dao_required
+def dao_students(request):
     from django.db.models import Q, Count
     q = request.GET.get('q', '').strip()
     course_id = request.GET.get('course', '').strip()
@@ -3002,7 +3190,7 @@ def doa_students(request):
         enrolled_count=Count('enrollments', distinct=True)
     ).order_by('username')
 
-    return render(request, 'doa_portal/students.html', {
+    return render(request, 'dao_portal/students.html', {
         'students': students,
         'courses': courses,
         'selected_course': selected_course,
@@ -3011,8 +3199,8 @@ def doa_students(request):
     })
 
 
-@doa_required
-def doa_student_attainment(request, student_id):
+@dao_required
+def dao_student_attainment(request, student_id):
     student = get_object_or_404(User, id=student_id, role='student')
     enrollments = Enrollment.objects.filter(student=student).select_related('course')
     results = []
@@ -3154,17 +3342,17 @@ def doa_student_attainment(request, student_id):
         key=lambda x: x['code'],
     )
 
-    return render(request, 'doa_portal/student_attainment.html', {
+    return render(request, 'dao_portal/student_attainment.html', {
         'student': student,
         'results': results,
         'program_plo_attainment': program_plo_attainment,
     })
 
 
-# ── DOA Section Management ────────────────────────────────────────────────────
+# ── DAO Section Management ────────────────────────────────────────────────────
 
-@doa_required
-def doa_sections(request):
+@dao_required
+def dao_sections(request):
     SEMESTER_OPTIONS = [
         'Fall 2023', 'Spring 2024', 'Fall 2024',
         'Spring 2025', 'Fall 2025', 'Spring 2026', 'Fall 2026',
@@ -3188,7 +3376,7 @@ def doa_sections(request):
 
     selected_course = Course.objects.filter(id=course_id).first() if course_id else None
 
-    return render(request, 'doa_portal/sections.html', {
+    return render(request, 'dao_portal/sections.html', {
         'sections': sections,
         'courses': courses,
         'semester_options': all_semesters,
@@ -3198,32 +3386,32 @@ def doa_sections(request):
     })
 
 
-@doa_required
-def doa_create_section(request):
+@dao_required
+def dao_create_section(request):
     if request.method == 'POST':
         course_id = request.POST.get('course_id', '').strip()
         name      = request.POST.get('name', '').strip().upper()
         batch     = request.POST.get('batch', '').strip()
         if not course_id or not name or not batch:
             messages.error(request, 'Course, section name, and batch are required.')
-            return redirect('doa_sections')
+            return redirect('dao_sections')
         course = get_object_or_404(Course, id=course_id)
         if Section.objects.filter(course=course, name=name, batch=batch).exists():
             messages.error(request, f'Section {name} for batch {batch} already exists in {course.code}.')
-            return redirect('doa_sections')
+            return redirect('dao_sections')
         section = Section.objects.create(course=course, name=name, batch=batch)
         messages.success(request, f'Section {name} created for {course.code} (Batch {batch}). Assign faculty and students below.')
-        return redirect('doa_section_detail', section_id=section.id)
-    return redirect('doa_sections')
+        return redirect('dao_section_detail', section_id=section.id)
+    return redirect('dao_sections')
 
 
-@doa_required
-def doa_section_detail(request, section_id):
+@dao_required
+def dao_section_detail(request, section_id):
     section = get_object_or_404(Section, id=section_id)
     faculty_list = User.objects.filter(role='faculty').order_by('full_name')
     assigned_faculty_ids = set(section.faculty.values_list('id', flat=True))
     students = section.students.all().order_by('username')
-    return render(request, 'doa_portal/section_detail.html', {
+    return render(request, 'dao_portal/section_detail.html', {
         'section': section,
         'faculty_list': faculty_list,
         'assigned_faculty_ids': assigned_faculty_ids,
@@ -3231,54 +3419,789 @@ def doa_section_detail(request, section_id):
     })
 
 
-@doa_required
-def doa_section_assign_faculty(request, section_id):
+@dao_required
+def dao_section_assign_faculty(request, section_id):
     if request.method == 'POST':
         section = get_object_or_404(Section, id=section_id)
         faculty_ids = request.POST.getlist('faculty_ids')
         section.faculty.set(User.objects.filter(id__in=faculty_ids, role='faculty'))
         messages.success(request, f'Faculty updated for {section.course.code} — Section {section.name}.')
-    return redirect('doa_section_detail', section_id=section_id)
+    return redirect('dao_section_detail', section_id=section_id)
 
 
-@doa_required
-def doa_section_assign_students(request, section_id):
+@dao_required
+def dao_section_assign_students(request, section_id):
     if request.method == 'POST':
         section = get_object_or_404(Section, id=section_id)
         start_id = request.POST.get('start_reg_id', '').strip()
         end_id   = request.POST.get('end_reg_id', '').strip()
         if not start_id or not end_id:
             messages.error(request, 'Both start and end registration IDs are required.')
-            return redirect('doa_section_detail', section_id=section_id)
+            return redirect('dao_section_detail', section_id=section_id)
         matched = User.objects.filter(role='student', username__gte=start_id, username__lte=end_id)
         if not matched.exists():
             messages.error(request, f'No students found with registration ID between "{start_id}" and "{end_id}".')
-            return redirect('doa_section_detail', section_id=section_id)
+            return redirect('dao_section_detail', section_id=section_id)
         before = section.students.count()
         section.students.add(*matched)
         added = section.students.count() - before
         messages.success(request, f'{added} new student(s) added to Section {section.name} ({matched.count()} matched the range).')
-    return redirect('doa_section_detail', section_id=section_id)
+    return redirect('dao_section_detail', section_id=section_id)
 
 
-@doa_required
-def doa_section_remove_student(request, section_id, student_id):
+@dao_required
+def dao_section_add_single_student(request, section_id):
+    if request.method == 'POST':
+        section = get_object_or_404(Section, id=section_id)
+        reg_id = request.POST.get('reg_id', '').strip()
+        if not reg_id:
+            messages.error(request, 'Registration ID is required.')
+            return redirect('dao_section_detail', section_id=section_id)
+        try:
+            student = User.objects.get(role='student', username=reg_id)
+        except User.DoesNotExist:
+            messages.error(request, f'No student found with registration ID "{reg_id}".')
+            return redirect('dao_section_detail', section_id=section_id)
+        if section.students.filter(id=student.id).exists():
+            messages.warning(request, f'{student.full_name or student.username} is already in this section.')
+        else:
+            section.students.add(student)
+            messages.success(request, f'{student.full_name or student.username} added to Section {section.name}.')
+    return redirect('dao_section_detail', section_id=section_id)
+
+
+@dao_required
+def dao_section_remove_student(request, section_id, student_id):
     if request.method == 'POST':
         section = get_object_or_404(Section, id=section_id)
         student = get_object_or_404(User, id=student_id)
         section.students.remove(student)
         messages.success(request, f'{student.full_name or student.username} removed from Section {section.name}.')
-    return redirect('doa_section_detail', section_id=section_id)
+    return redirect('dao_section_detail', section_id=section_id)
 
 
-@doa_required
-def doa_delete_section(request, section_id):
+@dao_required
+def dao_delete_section(request, section_id):
     if request.method == 'POST':
         section = get_object_or_404(Section, id=section_id)
         label = f"{section.course.code} — Section {section.name} (Batch {section.batch})"
         section.delete()
         messages.success(request, f'Section deleted: {label}.')
-    return redirect('doa_sections')
+    return redirect('dao_sections')
+
+
+# ── DEPARTMENT HEAD PORTAL VIEWS ──────────────────────────────────────────────
+
+def dept_head_required(view_func):
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('sign_in_html')
+        if request.user.role != 'dept_head':
+            return redirect('home')
+        return view_func(request, *args, **kwargs)
+    wrapper.__name__ = view_func.__name__
+    return wrapper
+
+
+@dept_head_required
+def dept_head_dashboard(request):
+    from datetime import date as dt_date
+    return render(request, 'dept_head_portal/dashboard.html', {
+        'today':             dt_date.today().strftime('%B %d, %Y'),
+        'total_users':       User.objects.count(),
+        'total_faculty':     User.objects.filter(role='faculty').count(),
+        'total_students':    User.objects.filter(role='student').count(),
+        'total_courses':     Course.objects.count(),
+        'total_enrollments': Enrollment.objects.count(),
+        'recent_users':      User.objects.order_by('-date_joined')[:6],
+        'recent_courses':    Course.objects.prefetch_related('enrollments').order_by('-created_at')[:6],
+    })
+
+
+@dept_head_required
+def dept_head_users(request):
+    users = User.objects.all().order_by('-date_joined')
+    return render(request, 'dept_head_portal/users.html', {'users': users})
+
+
+@dept_head_required
+def dept_head_create_user(request):
+    if request.method == 'POST':
+        full_name = request.POST.get('full_name', '').strip()
+        email     = request.POST.get('email', '').strip()
+        password  = request.POST.get('password', '')
+        role      = request.POST.get('role', 'student')
+        if role not in ('faculty', 'student'):
+            role = 'student'
+        if User.objects.filter(email=email).exists():
+            messages.error(request, 'Email already registered.')
+            return redirect('dept_head_users')
+        if len(password) < 8:
+            messages.error(request, 'Password must be at least 8 characters.')
+            return redirect('dept_head_users')
+        username = email.split('@')[0]
+        base = username; i = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base}{i}"; i += 1
+        User.objects.create_user(
+            username=username, email=email, password=password,
+            full_name=full_name, role=role,
+        )
+        messages.success(request, f'User {full_name} created successfully.')
+    return redirect('dept_head_users')
+
+
+@dept_head_required
+def dept_head_edit_user(request, user_id):
+    u = get_object_or_404(User, id=user_id)
+    if request.method == 'POST':
+        u.full_name = request.POST.get('full_name', u.full_name).strip()
+        u.email     = request.POST.get('email', u.email).strip()
+        new_role    = request.POST.get('role', u.role)
+        if new_role in ('faculty', 'student'):
+            u.role = new_role
+        pw = request.POST.get('password', '').strip()
+        if pw:
+            if len(pw) < 8:
+                messages.error(request, 'Password must be at least 8 characters.')
+                return redirect('dept_head_users')
+            u.set_password(pw)
+        u.save()
+        messages.success(request, f'User {u.full_name} updated.')
+    return redirect('dept_head_users')
+
+
+@dept_head_required
+def dept_head_toggle_user(request, user_id):
+    if request.method == 'POST':
+        u = get_object_or_404(User, id=user_id)
+        u.is_active = not u.is_active
+        u.save()
+        status = 'activated' if u.is_active else 'deactivated'
+        messages.success(request, f'User {u.full_name or u.username} {status}.')
+    return redirect('dept_head_users')
+
+
+@dept_head_required
+def dept_head_delete_user(request, user_id):
+    if request.method == 'POST':
+        u = get_object_or_404(User, id=user_id)
+        name = u.full_name or u.username
+        u.delete()
+        messages.success(request, f'User {name} deleted.')
+    return redirect('dept_head_users')
+
+
+@dept_head_required
+def dept_head_courses(request):
+    courses = Course.objects.prefetch_related('faculty', 'enrollments', 'assessments', 'sections').order_by('-created_at')
+    semesters = Course.objects.values_list('semester', flat=True).distinct().order_by('semester')
+    faculty_list = User.objects.filter(role='faculty').order_by('full_name')
+    return render(request, 'dept_head_portal/courses.html', {
+        'courses': courses,
+        'semesters': semesters,
+        'faculty_list': faculty_list,
+        'semester_options': SEMESTER_OPTIONS,
+    })
+
+
+@dept_head_required
+def dept_head_create_course(request):
+    if request.method == 'POST':
+        code         = request.POST.get('code', '').strip()
+        name         = request.POST.get('name', '').strip()
+        description  = request.POST.get('description', '').strip()
+        credit_hours = int(request.POST.get('credit_hours', 3) or 3)
+        semester     = request.POST.get('semester', 'Fall 2025')
+        if not code or not name:
+            messages.error(request, 'Course code and name are required.')
+            return redirect('dept_head_courses')
+        course = Course.objects.create(
+            code=code, name=name, description=description,
+            credit_hours=credit_hours, semester=semester,
+        )
+        sec_names = request.POST.getlist('section_name')
+        sec_sems  = request.POST.getlist('section_semester')
+        created_sections = 0
+        for sec_name, sec_sem in zip(sec_names, sec_sems):
+            sec_name = sec_name.strip().upper()
+            sec_sem  = sec_sem.strip()
+            if sec_name and sec_sem:
+                Section.objects.get_or_create(course=course, name=sec_name, batch=sec_sem)
+                created_sections += 1
+        msg = f'Course {code} created'
+        msg += f' with {created_sections} section(s).' if created_sections else '.'
+        messages.success(request, msg)
+        return redirect('dept_head_assign_faculty_page', course_id=course.id)
+    return redirect('dept_head_courses')
+
+
+@dept_head_required
+def dept_head_assign_faculty_page(request, course_id):
+    course = get_object_or_404(Course, id=course_id)
+    faculty_list = User.objects.filter(role='faculty').order_by('full_name')
+    sections = list(course.sections.prefetch_related('faculty').order_by('batch', 'name'))
+
+    if request.method == 'POST':
+        for section in sections:
+            faculty_id = request.POST.get(f'faculty_{section.id}', '').strip()
+            if faculty_id:
+                faculty = User.objects.filter(id=faculty_id, role='faculty').first()
+                if faculty:
+                    section.faculty.set([faculty])
+            else:
+                section.faculty.clear()
+        all_faculty_ids = set()
+        for section in sections:
+            all_faculty_ids.update(section.faculty.values_list('id', flat=True))
+        course.faculty.set(User.objects.filter(id__in=all_faculty_ids))
+        messages.success(request, f'Faculty assignments saved for {course.code}.')
+        return redirect('dept_head_courses')
+
+    for sec in sections:
+        sec.current_faculty = sec.faculty.first()
+
+    return render(request, 'dept_head_portal/assign_faculty.html', {
+        'course': course,
+        'faculty_list': faculty_list,
+        'sections': sections,
+    })
+
+
+@dept_head_required
+def dept_head_assign_faculty(request, course_id):
+    if request.method == 'POST':
+        c = get_object_or_404(Course, id=course_id)
+        faculty_ids = request.POST.getlist('faculty_ids')
+        c.faculty.set(User.objects.filter(id__in=faculty_ids, role='faculty'))
+        messages.success(request, f'Faculty assignment for {c.code} updated.')
+    return redirect('dept_head_courses')
+
+
+@dept_head_required
+def dept_head_toggle_course_active(request, course_id):
+    if request.method == 'POST':
+        c = get_object_or_404(Course, id=course_id)
+        c.is_active = not c.is_active
+        c.save()
+        status = 'activated' if c.is_active else 'deactivated'
+        messages.success(request, f'Course {c.code} {status}.')
+    return redirect('dept_head_courses')
+
+
+@dept_head_required
+def dept_head_delete_course(request, course_id):
+    if request.method == 'POST':
+        c = get_object_or_404(Course, id=course_id)
+        name = c.code
+        c.delete()
+        messages.success(request, f'Course {name} deleted.')
+    return redirect('dept_head_courses')
+
+
+@dept_head_required
+def dept_head_analytics(request):
+    from django.db.models import Q
+    all_semesters = Course.objects.values_list('semester', flat=True).distinct().order_by('semester')
+
+    course_name_q = request.GET.get('course_name', '').strip()
+    semester_q    = request.GET.get('semester', '').strip()
+
+    courses = Course.objects.all().order_by('code')
+    if course_name_q:
+        courses = courses.filter(Q(name__icontains=course_name_q) | Q(code__icontains=course_name_q))
+    if semester_q:
+        courses = courses.filter(semester=semester_q)
+
+    selected_course = None
+    plo_attainment = []
+    clo_attainment = []
+    total_enrolled = 0
+    present_count = 0
+
+    course_id = request.GET.get('course')
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id)
+    elif courses.exists():
+        selected_course = courses.first()
+
+    if selected_course:
+        SUB_TYPES = {'mid', 'final'}
+        assessments = list(
+            Assessment.objects.filter(course=selected_course, status='published')
+            .prefetch_related(
+                'questions__clos', 'questions__plos',
+                'questions__sub_questions__clos', 'questions__sub_questions__plos',
+            )
+            .order_by('assessment_type', 'created_at')
+        )
+
+        all_columns = []
+        for a in assessments:
+            use_subs = a.assessment_type in SUB_TYPES
+            is_final = a.assessment_type == 'final'
+            for q in a.questions.all().order_by('order'):
+                subs = list(q.sub_questions.all().order_by('order')) if use_subs else []
+                if use_subs and subs:
+                    for sq in subs:
+                        all_columns.append({
+                            'is_sub': True, 'entity_id': sq.id, 'max_marks': sq.max_marks,
+                            'clo_ids': [c.id for c in sq.clos.all()],
+                            'plo_ids': [p.id for p in sq.plos.all()],
+                            'is_final': is_final,
+                        })
+                else:
+                    all_columns.append({
+                        'is_sub': False, 'entity_id': q.id, 'max_marks': q.max_marks,
+                        'clo_ids': [c.id for c in q.clos.all()],
+                        'plo_ids': [p.id for p in q.plos.all()],
+                        'is_final': is_final,
+                    })
+
+        clos = list(selected_course.clos.all())
+        clo_max = {
+            clo.id: sum(col['max_marks'] for col in all_columns if clo.id in col['clo_ids'])
+            for clo in clos
+        }
+        plo_ids_used = set()
+        for col in all_columns:
+            plo_ids_used.update(col['plo_ids'])
+        plos = list(PLO.objects.filter(id__in=plo_ids_used))
+        plo_max = {
+            p.id: sum(col['max_marks'] for col in all_columns if p.id in col['plo_ids'])
+            for p in plos
+        }
+
+        q_ids  = [col['entity_id'] for col in all_columns if not col['is_sub']]
+        sq_ids = [col['entity_id'] for col in all_columns if col['is_sub']]
+        q_grade_map, sq_grade_map = {}, {}
+        if q_ids:
+            for g in QuestionGrade.objects.filter(
+                question_id__in=q_ids,
+                submission__assessment__course=selected_course,
+            ).select_related('submission__student'):
+                q_grade_map.setdefault(g.submission.student_id, {})[g.question_id] = g.marks_obtained
+        if sq_ids:
+            for g in SubQuestionGrade.objects.filter(
+                sub_question_id__in=sq_ids,
+                submission__assessment__course=selected_course,
+            ).select_related('submission__student'):
+                sq_grade_map.setdefault(g.submission.student_id, {})[g.sub_question_id] = g.marks_obtained
+
+        students = list(
+            User.objects.filter(enrollments__course=selected_course)
+            .distinct().order_by('full_name', 'username')
+        )
+        total_enrolled = len(students)
+
+        has_final_cols = any(col['is_final'] for col in all_columns)
+        present_student_ids = set()
+        for student in students:
+            sq_m = sq_grade_map.get(student.id, {})
+            q_m  = q_grade_map.get(student.id, {})
+            if has_final_cols:
+                is_present = any(
+                    col['entity_id'] in (sq_m if col['is_sub'] else q_m)
+                    for col in all_columns if col['is_final']
+                )
+            else:
+                is_present = bool(sq_m or q_m)
+            if is_present:
+                present_student_ids.add(student.id)
+        present_count = len(present_student_ids)
+
+        clo_achieved = {clo.id: 0 for clo in clos}
+        plo_achieved = {p.id: 0 for p in plos}
+
+        for student in students:
+            sq_m = sq_grade_map.get(student.id, {})
+            q_m  = q_grade_map.get(student.id, {})
+            if not sq_m and not q_m:
+                continue
+
+            def _mark(col, _sq=sq_m, _q=q_m):
+                return _sq.get(col['entity_id'], 0) if col['is_sub'] else _q.get(col['entity_id'], 0)
+
+            for clo in clos:
+                mx = clo_max[clo.id]
+                if mx == 0:
+                    continue
+                raw = sum(_mark(col) for col in all_columns if clo.id in col['clo_ids'])
+                if round(raw / mx * 100, 1) >= 40:
+                    clo_achieved[clo.id] += 1
+
+            for p in plos:
+                mx = plo_max[p.id]
+                if mx == 0:
+                    continue
+                raw = sum(_mark(col) for col in all_columns if p.id in col['plo_ids'])
+                if round(raw / mx * 100, 1) >= 40:
+                    plo_achieved[p.id] += 1
+
+        for clo in clos:
+            achieved = clo_achieved[clo.id]
+            pct = round(achieved / present_count * 100, 1) if present_count > 0 else 0.0
+            clo_attainment.append({
+                'code': clo.code, 'description': clo.description,
+                'attainment': pct, 'achieved': achieved, 'present': present_count,
+            })
+
+        for p in plos:
+            achieved = plo_achieved[p.id]
+            pct = round(achieved / present_count * 100, 1) if present_count > 0 else 0.0
+            plo_attainment.append({
+                'code': p.code, 'description': p.description,
+                'attainment': pct, 'achieved': achieved, 'present': present_count,
+            })
+
+    return render(request, 'dept_head_portal/analytics.html', {
+        'courses': courses,
+        'selected_course': selected_course,
+        'plo_attainment': plo_attainment,
+        'clo_attainment': clo_attainment,
+        'total_enrolled': total_enrolled,
+        'present_count': present_count,
+        'all_semesters': all_semesters,
+        'course_name_q': course_name_q,
+        'semester_q': semester_q,
+    })
+
+
+@dept_head_required
+def dept_head_students(request):
+    from django.db.models import Q, Count
+    q = request.GET.get('q', '').strip()
+    course_id = request.GET.get('course', '').strip()
+
+    courses = Course.objects.all().order_by('code')
+    selected_course = None
+    students = User.objects.filter(role='student')
+
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id)
+        students = students.filter(enrollments__course=selected_course).distinct()
+
+    if q:
+        students = students.filter(Q(username__icontains=q) | Q(full_name__icontains=q))
+
+    students = students.annotate(
+        enrolled_count=Count('enrollments', distinct=True)
+    ).order_by('username')
+
+    return render(request, 'dept_head_portal/students.html', {
+        'students': students,
+        'courses': courses,
+        'selected_course': selected_course,
+        'q': q,
+        'course_id': course_id,
+    })
+
+
+@dept_head_required
+def dept_head_student_attainment(request, student_id):
+    student = get_object_or_404(User, id=student_id, role='student')
+    enrollments = Enrollment.objects.filter(student=student).select_related('course')
+    results = []
+    program_plo_data = {}
+    SUB_TYPES = {'mid', 'final'}
+
+    for e in enrollments:
+        course = e.course
+        assessments = list(
+            Assessment.objects.filter(course=course, status='published')
+            .prefetch_related(
+                'questions__clos', 'questions__plos',
+                'questions__sub_questions__clos', 'questions__sub_questions__plos',
+            )
+            .order_by('assessment_type', 'created_at')
+        )
+
+        all_columns = []
+        for a in assessments:
+            use_subs = a.assessment_type in SUB_TYPES
+            for q in a.questions.all().order_by('order'):
+                subs = list(q.sub_questions.all().order_by('order')) if use_subs else []
+                if use_subs and subs:
+                    for sq in subs:
+                        all_columns.append({
+                            'is_sub': True, 'entity_id': sq.id, 'max_marks': sq.max_marks,
+                            'clo_ids': [c.id for c in sq.clos.all()],
+                            'plo_ids': [p.id for p in sq.plos.all()],
+                        })
+                else:
+                    all_columns.append({
+                        'is_sub': False, 'entity_id': q.id, 'max_marks': q.max_marks,
+                        'clo_ids': [c.id for c in q.clos.all()],
+                        'plo_ids': [p.id for p in q.plos.all()],
+                    })
+
+        clos = list(course.clos.all())
+        clo_max = {
+            clo.id: sum(col['max_marks'] for col in all_columns if clo.id in col['clo_ids'])
+            for clo in clos
+        }
+        plo_ids_used = set()
+        for col in all_columns:
+            plo_ids_used.update(col['plo_ids'])
+        plos = list(PLO.objects.filter(id__in=plo_ids_used))
+        plo_max = {
+            p.id: sum(col['max_marks'] for col in all_columns if p.id in col['plo_ids'])
+            for p in plos
+        }
+        total_max_overall = sum(col['max_marks'] for col in all_columns)
+
+        q_ids  = [col['entity_id'] for col in all_columns if not col['is_sub']]
+        sq_ids = [col['entity_id'] for col in all_columns if col['is_sub']]
+        q_m, sq_m = {}, {}
+        if q_ids:
+            for g in QuestionGrade.objects.filter(
+                question_id__in=q_ids,
+                submission__assessment__course=course,
+                submission__student=student,
+            ):
+                q_m[g.question_id] = g.marks_obtained
+        if sq_ids:
+            for g in SubQuestionGrade.objects.filter(
+                sub_question_id__in=sq_ids,
+                submission__assessment__course=course,
+                submission__student=student,
+            ):
+                sq_m[g.sub_question_id] = g.marks_obtained
+
+        def _mark(col, _sq=sq_m, _q=q_m):
+            return _sq.get(col['entity_id'], 0) if col['is_sub'] else _q.get(col['entity_id'], 0)
+
+        has_grades = bool(q_m or sq_m)
+        total_raw = sum(_mark(col) for col in all_columns)
+        avg_pct = round(total_raw / total_max_overall * 100, 1) if (total_max_overall > 0 and has_grades) else 0.0
+
+        grade = 'F'
+        if avg_pct >= 80:   grade = 'A+'
+        elif avg_pct >= 75: grade = 'A'
+        elif avg_pct >= 70: grade = 'A-'
+        elif avg_pct >= 65: grade = 'B+'
+        elif avg_pct >= 60: grade = 'B'
+        elif avg_pct >= 55: grade = 'B-'
+        elif avg_pct >= 50: grade = 'C+'
+        elif avg_pct >= 45: grade = 'C'
+        elif avg_pct >= 40: grade = 'D'
+
+        clo_results = []
+        for clo in clos:
+            mx = clo_max[clo.id]
+            raw = sum(_mark(col) for col in all_columns if clo.id in col['clo_ids'])
+            att = round(raw / mx * 100, 1) if mx > 0 else 0.0
+            clo_results.append({
+                'code': clo.code, 'bloom': clo.bloom_level,
+                'description': clo.description,
+                'obtained': round(raw, 1), 'total': mx,
+                'attainment': att,
+            })
+
+        plo_results = []
+        for p in plos:
+            mx = plo_max[p.id]
+            if mx == 0:
+                continue
+            raw = sum(_mark(col) for col in all_columns if p.id in col['plo_ids'])
+            att = round(raw / mx * 100, 1)
+            plo_results.append({'code': p.code, 'description': p.description, 'attainment': att})
+            if p.id not in program_plo_data:
+                program_plo_data[p.id] = {
+                    'code': p.code, 'description': p.description,
+                    'total_max': 0.0, 'total_raw': 0.0,
+                }
+            program_plo_data[p.id]['total_max'] += mx
+            program_plo_data[p.id]['total_raw'] += raw
+
+        graded_count = Submission.objects.filter(
+            student=student, assessment__in=assessments,
+            status__in=['graded', 'flagged'],
+        ).count()
+
+        results.append({
+            'course': course, 'grade': grade,
+            'avg_pct': avg_pct, 'graded_count': graded_count,
+            'clo_results': clo_results,
+            'plo_results': plo_results,
+        })
+
+    program_plo_attainment = sorted(
+        [
+            {
+                'code': d['code'],
+                'description': d['description'],
+                'attainment': round(d['total_raw'] / d['total_max'] * 100, 1),
+                'obtained': round(d['total_raw'], 1),
+                'total': round(d['total_max'], 1),
+            }
+            for d in program_plo_data.values() if d['total_max'] > 0
+        ],
+        key=lambda x: x['code'],
+    )
+
+    return render(request, 'dept_head_portal/student_attainment.html', {
+        'student': student,
+        'results': results,
+        'program_plo_attainment': program_plo_attainment,
+    })
+
+
+@dept_head_required
+def dept_head_sections(request):
+    SEMESTER_OPTIONS_DH = [
+        'Fall 2023', 'Spring 2024', 'Fall 2024',
+        'Spring 2025', 'Fall 2025', 'Spring 2026', 'Fall 2026',
+    ]
+    courses = Course.objects.all().order_by('code')
+    existing_semesters = list(
+        Section.objects.values_list('batch', flat=True).distinct().order_by('batch')
+    )
+    all_semesters = sorted(set(SEMESTER_OPTIONS_DH + existing_semesters))
+
+    course_id  = request.GET.get('course', '').strip()
+    semester_q = request.GET.get('batch', '').strip()
+
+    sections = Section.objects.select_related('course').prefetch_related('faculty', 'students').order_by('course__code', 'batch', 'name')
+    if course_id:
+        sections = sections.filter(course_id=course_id)
+    if semester_q:
+        sections = sections.filter(batch=semester_q)
+
+    selected_course = Course.objects.filter(id=course_id).first() if course_id else None
+
+    return render(request, 'dept_head_portal/sections.html', {
+        'sections': sections,
+        'courses': courses,
+        'semester_options': all_semesters,
+        'selected_course': selected_course,
+        'course_id': course_id,
+        'batch_q': semester_q,
+    })
+
+
+@dept_head_required
+def dept_head_create_section(request):
+    if request.method == 'POST':
+        course_id = request.POST.get('course_id', '').strip()
+        name      = request.POST.get('name', '').strip().upper()
+        batch     = request.POST.get('batch', '').strip()
+        if not course_id or not name or not batch:
+            messages.error(request, 'Course, section name, and batch are required.')
+            return redirect('dept_head_sections')
+        course = get_object_or_404(Course, id=course_id)
+        if Section.objects.filter(course=course, name=name, batch=batch).exists():
+            messages.error(request, f'Section {name} for batch {batch} already exists in {course.code}.')
+            return redirect('dept_head_sections')
+        section = Section.objects.create(course=course, name=name, batch=batch)
+        messages.success(request, f'Section {name} created for {course.code} (Batch {batch}).')
+        return redirect('dept_head_section_detail', section_id=section.id)
+    return redirect('dept_head_sections')
+
+
+@dept_head_required
+def dept_head_section_detail(request, section_id):
+    section = get_object_or_404(Section, id=section_id)
+    faculty_list = User.objects.filter(role='faculty').order_by('full_name')
+    assigned_faculty_ids = set(section.faculty.values_list('id', flat=True))
+    students = section.students.all().order_by('username')
+    return render(request, 'dept_head_portal/section_detail.html', {
+        'section': section,
+        'faculty_list': faculty_list,
+        'assigned_faculty_ids': assigned_faculty_ids,
+        'students': students,
+    })
+
+
+@dept_head_required
+def dept_head_section_assign_faculty(request, section_id):
+    if request.method == 'POST':
+        section = get_object_or_404(Section, id=section_id)
+        faculty_ids = request.POST.getlist('faculty_ids')
+        section.faculty.set(User.objects.filter(id__in=faculty_ids, role='faculty'))
+        messages.success(request, f'Faculty updated for {section.course.code} — Section {section.name}.')
+    return redirect('dept_head_section_detail', section_id=section_id)
+
+
+@dept_head_required
+def dept_head_section_assign_students(request, section_id):
+    if request.method == 'POST':
+        section = get_object_or_404(Section, id=section_id)
+        start_id = request.POST.get('start_reg_id', '').strip()
+        end_id   = request.POST.get('end_reg_id', '').strip()
+        if not start_id or not end_id:
+            messages.error(request, 'Both start and end registration IDs are required.')
+            return redirect('dept_head_section_detail', section_id=section_id)
+        matched = User.objects.filter(role='student', username__gte=start_id, username__lte=end_id)
+        if not matched.exists():
+            messages.error(request, f'No students found with registration ID between "{start_id}" and "{end_id}".')
+            return redirect('dept_head_section_detail', section_id=section_id)
+        before = section.students.count()
+        section.students.add(*matched)
+        added = section.students.count() - before
+        messages.success(request, f'{added} new student(s) added to Section {section.name}.')
+    return redirect('dept_head_section_detail', section_id=section_id)
+
+
+@dept_head_required
+def dept_head_section_add_single_student(request, section_id):
+    if request.method == 'POST':
+        section = get_object_or_404(Section, id=section_id)
+        reg_id = request.POST.get('reg_id', '').strip()
+        if not reg_id:
+            messages.error(request, 'Registration ID is required.')
+            return redirect('dept_head_section_detail', section_id=section_id)
+        try:
+            student = User.objects.get(role='student', username=reg_id)
+        except User.DoesNotExist:
+            messages.error(request, f'No student found with registration ID "{reg_id}".')
+            return redirect('dept_head_section_detail', section_id=section_id)
+        if section.students.filter(id=student.id).exists():
+            messages.warning(request, f'{student.full_name or student.username} is already in this section.')
+        else:
+            section.students.add(student)
+            messages.success(request, f'{student.full_name or student.username} added to Section {section.name}.')
+    return redirect('dept_head_section_detail', section_id=section_id)
+
+
+@dept_head_required
+def dept_head_section_remove_student(request, section_id, student_id):
+    if request.method == 'POST':
+        section = get_object_or_404(Section, id=section_id)
+        student = get_object_or_404(User, id=student_id)
+        section.students.remove(student)
+        messages.success(request, f'{student.full_name or student.username} removed from Section {section.name}.')
+    return redirect('dept_head_section_detail', section_id=section_id)
+
+
+@dept_head_required
+def dept_head_delete_section(request, section_id):
+    if request.method == 'POST':
+        section = get_object_or_404(Section, id=section_id)
+        label = f"{section.course.code} — Section {section.name} (Batch {section.batch})"
+        section.delete()
+        messages.success(request, f'Section deleted: {label}.')
+    return redirect('dept_head_sections')
+
+
+@dept_head_required
+def dept_head_escar(request):
+    courses = Course.objects.all().order_by('code')
+    selected_course = None
+    course_id = request.GET.get('course')
+    if course_id:
+        selected_course = get_object_or_404(Course, id=course_id)
+    elif courses.exists():
+        selected_course = courses.first()
+    rows, total_enrolled, total_participated, total_absent = _compute_escar(selected_course)
+    return render(request, 'dept_head_portal/escar.html', {
+        'courses': courses,
+        'selected_course': selected_course,
+        'rows': rows,
+        'total_enrolled': total_enrolled,
+        'total_participated': total_participated,
+        'total_absent': total_absent,
+    })
 
 
 # ── Assessment Download (PDF / DOCX) ─────────────────────────────────────────

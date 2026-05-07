@@ -103,13 +103,18 @@
         {{ n.get_notif_type_display }}
       </span>
 
-      {% if n.notif_type == 'grade_released' %}
-      <a href="{% url 'student_assignments' %}"
+      {% if n.notif_type == 'grade_released' and n.assessment %}
+      <a href="{% url 'student_course_assignments' n.assessment.course_id %}#asgn-{{ n.assessment.id }}"
          style="font-size:12px;color:var(--teal);text-decoration:none;font-weight:500;">
         View Submission →
       </a>
-      {% elif n.notif_type == 'new_assignment' %}
-      <a href="{% url 'student_assignments' %}"
+      {% elif n.notif_type == 'new_assignment' and n.assessment %}
+      <a href="{% url 'student_course_assignments' n.assessment.course_id %}#asgn-{{ n.assessment.id }}"
+         style="font-size:12px;color:var(--teal);text-decoration:none;font-weight:500;">
+        View Assignment →
+      </a>
+      {% elif n.notif_type in 'deadline_today,deadline_tomorrow' and n.assessment %}
+      <a href="{% url 'student_course_assignments' n.assessment.course_id %}#asgn-{{ n.assessment.id }}"
          style="font-size:12px;color:var(--teal);text-decoration:none;font-weight:500;">
         View Assignment →
       </a>

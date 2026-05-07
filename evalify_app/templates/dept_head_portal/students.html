@@ -1,4 +1,4 @@
-{% extends 'doa_portal/base.html' %}
+{% extends 'dept_head_portal/base.html' %}
 {% block nav_students %}active{% endblock %}
 
 {% block content %}
@@ -9,7 +9,6 @@
   </div>
 </div>
 
-<!-- Search & Filter bar -->
 <form method="get" id="filterForm">
   <div class="filter-bar" style="flex-wrap:wrap;gap:10px;">
     <div class="search-box" style="flex:1;min-width:220px;max-width:320px;">
@@ -27,7 +26,7 @@
     </select>
     <button type="submit" class="btn btn-primary">Search</button>
     {% if q or course_id %}
-    <a href="{% url 'doa_students' %}" class="btn btn-outline">Clear</a>
+    <a href="{% url 'dept_head_students' %}" class="btn btn-outline">Clear</a>
     {% endif %}
   </div>
   {% if selected_course %}
@@ -62,7 +61,7 @@
           <tr>
             <td>
               <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:32px;height:32px;border-radius:50%;background:var(--indigo-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--indigo);flex-shrink:0;">
+                <div style="width:32px;height:32px;border-radius:50%;background:var(--violet-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--violet);flex-shrink:0;">
                   {{ s.full_name|default:s.username|slice:":1"|upper }}
                 </div>
                 <div>
@@ -79,7 +78,7 @@
               <span class="badge badge-blue">{{ s.enrolled_count }} course{{ s.enrolled_count|pluralize }}</span>
             </td>
             <td>
-              <a href="{% url 'doa_student_attainment' s.id %}" class="btn btn-outline btn-sm">
+              <a href="{% url 'dept_head_student_attainment' s.id %}" class="btn btn-outline btn-sm">
                 &#128202; View Attainment
               </a>
             </td>

@@ -1,4 +1,4 @@
-{% extends 'doa_portal/base.html' %}
+﻿{% extends 'dao_portal/base.html' %}
 {% block nav_dashboard %}active{% endblock %}
 
 {% block content %}
@@ -48,7 +48,7 @@
   <div class="panel">
     <div class="panel-head">
       <span class="panel-title">Recent Users</span>
-      <a href="{% url 'doa_users' %}" class="btn btn-outline btn-sm">View All</a>
+      <a href="{% url 'dao_users' %}" class="btn btn-outline btn-sm">View All</a>
     </div>
     <div class="panel-body" style="padding:0;">
       <table>
@@ -67,7 +67,7 @@
               <div style="font-size:11px;color:var(--gray);">{{ u.email }}</div>
             </td>
             <td>
-              <span class="badge {% if u.role == 'faculty' %}badge-teal{% elif u.role == 'student' %}badge-blue{% elif u.role == 'admin' %}badge-red{% elif u.role == 'doa' %}badge-indigo{% else %}badge-gray{% endif %}">
+              <span class="badge {% if u.role == 'faculty' %}badge-teal{% elif u.role == 'student' %}badge-blue{% elif u.role == 'admin' %}badge-red{% elif u.role == 'dao' %}badge-indigo{% else %}badge-gray{% endif %}">
                 {{ u.role|default:"—" }}
               </span>
             </td>
@@ -84,7 +84,7 @@
   <div class="panel">
     <div class="panel-head">
       <span class="panel-title">Recent Courses</span>
-      <a href="{% url 'doa_courses' %}" class="btn btn-outline btn-sm">View All</a>
+      <a href="{% url 'dao_courses' %}" class="btn btn-outline btn-sm">View All</a>
     </div>
     <div class="panel-body" style="padding:0;">
       <table>

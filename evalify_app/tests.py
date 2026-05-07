@@ -51,8 +51,9 @@ class BaseTestCase(TestCase):
 
         self.course = Course.objects.create(
             code='CS101', name='Intro to CS',
-            faculty=self.faculty, semester='Fall 2025', credit_hours=3,
+            semester='Fall 2025', credit_hours=3,
         )
+        self.course.faculty.add(self.faculty)
         self.plo = PLO.objects.create(
             code='PLO1', description='Problem Solving', created_by=self.faculty,
         )
@@ -91,7 +92,7 @@ class CourseModelTests(BaseTestCase):
         self.assertEqual(str(self.course), 'CS101: Intro to CS')
 
     def test_faculty_relationship(self):
-        self.assertEqual(self.course.faculty, self.faculty)
+        self.assertIn(self.faculty, self.course.faculty.all())
 
     def test_clos_relation(self):
         self.assertEqual(self.course.clos.count(), 1)
@@ -185,8 +186,9 @@ class EnrollmentModelTests(BaseTestCase):
     def test_cascade_delete_on_course_delete(self):
         e = Enrollment.objects.create(student=self.student, course=self.course)
         course2 = Course.objects.create(
-            code='CS999', name='Tmp', faculty=self.faculty, semester='X',
+            code='CS999', name='Tmp', semester='X',
         )
+        course2.faculty.add(self.faculty)
         e2 = Enrollment.objects.create(student=self.student, course=course2)
         course2.delete()
         self.assertFalse(Enrollment.objects.filter(id=e2.id).exists())
@@ -814,7 +816,7 @@ class AuthViewTests(BaseTestCase):
             'password': 'securePass1',
             'role': 'student',
         })
-        self.assertRedirects(response, reverse('home'), fetch_redirect_response=False)
+        self.assertRedirects(response, '/signin/?registered=1', fetch_redirect_response=False)
         self.assertTrue(User.objects.filter(email='20221001@uap-bd.edu').exists())
 
     def test_signup_post_faculty_valid_email(self):
@@ -825,7 +827,7 @@ class AuthViewTests(BaseTestCase):
             'password': 'securePass2',
             'role': 'faculty',
         })
-        self.assertRedirects(response, reverse('home'), fetch_redirect_response=False)
+        self.assertRedirects(response, '/signin/?registered=1', fetch_redirect_response=False)
         self.assertTrue(User.objects.filter(email='prof.new@uap-bd.edu').exists())
 
     def test_signup_post_student_invalid_domain(self):
@@ -923,10 +925,11 @@ class FacultyDashboardTests(BaseTestCase):
             username='other.faculty', email='other.faculty@uap-bd.edu',
             password='pass12345', role='faculty',
         )
-        Course.objects.create(
+        other_c = Course.objects.create(
             code='OTHER101', name='Other Course',
-            faculty=other_faculty, semester='Fall 2025',
+            semester='Fall 2025',
         )
+        other_c.faculty.add(other_faculty)
         response = self.faculty_client.get(reverse('faculty_dashboard'))
         course_codes = [c.code for c in response.context['courses']]
         self.assertIn('CS101', course_codes)
@@ -938,31 +941,20 @@ class FacultyCoursesViewTests(BaseTestCase):
         response = self.faculty_client.get(reverse('faculty_courses'))
         self.assertEqual(response.status_code, 200)
 
-    def test_add_course_success(self):
+    def test_add_course_returns_403(self):
+        # Course creation is managed by DAO; faculty endpoint returns 403
         response = self.faculty_client.post(
             reverse('add_course'),
             data=json.dumps({'code': 'CS201', 'name': 'Data Structures',
                              'semester': 'Spring 2025', 'credit_hours': 3}),
             content_type='application/json',
         )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertTrue(data['success'])
-        self.assertTrue(Course.objects.filter(code='CS201').exists())
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Course.objects.filter(code='CS201').exists())
 
-    def test_add_course_creates_with_correct_faculty(self):
-        self.faculty_client.post(
-            reverse('add_course'),
-            data=json.dumps({'code': 'CS301', 'name': 'Algorithms',
-                             'semester': 'Fall 2025', 'credit_hours': 3}),
-            content_type='application/json',
-        )
-        course = Course.objects.get(code='CS301')
-        self.assertEqual(course.faculty, self.faculty)
-
-    def test_add_course_get_returns_400(self):
+    def test_add_course_get_also_returns_403(self):
         response = self.faculty_client.get(reverse('add_course'))
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 403)
 
     def test_add_clo_success(self):
         response = self.faculty_client.post(
@@ -1212,9 +1204,9 @@ class FacultyGradingViewTests(BaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'faculty/grading.html')
 
-    def test_grading_context_has_submissions(self):
+    def test_grading_context_has_course_cards(self):
         response = self.faculty_client.get(reverse('faculty_grading'))
-        self.assertIn('submissions', response.context)
+        self.assertIn('course_cards', response.context)
 
     def test_get_submission_detail_json(self):
         response = self.faculty_client.get(
@@ -1260,7 +1252,8 @@ class FacultyGradingViewTests(BaseTestCase):
         qg = QuestionGrade.objects.get(submission=self.submission, question=self.question)
         self.assertLessEqual(qg.marks_obtained, self.question.max_marks)
 
-    def test_grade_submission_flagged_on_plagiarism(self):
+    def test_grade_submission_always_graded(self):
+        # Grading always sets status to 'graded' regardless of plagiarism score
         self.submission.plagiarism_score = 80
         self.submission.save()
         self.faculty_client.post(
@@ -1272,7 +1265,7 @@ class FacultyGradingViewTests(BaseTestCase):
             content_type='application/json',
         )
         self.submission.refresh_from_db()
-        self.assertEqual(self.submission.status, 'flagged')
+        self.assertEqual(self.submission.status, 'graded')
 
     def test_grade_submission_creates_question_grade(self):
         self.faculty_client.post(
@@ -1700,10 +1693,11 @@ class StudentCoursesViewTests(BaseTestCase):
         response = self.student_client.get(reverse('student_courses'))
         self.assertIn(self.course, response.context['courses'])
 
-    def test_courses_shows_unenrolled_in_all_courses(self):
+    def test_courses_shows_enrolled_in_courses(self):
+        Enrollment.objects.create(student=self.student, course=self.course)
         response = self.student_client.get(reverse('student_courses'))
-        all_course_ids = [c.id for c in response.context['all_courses']]
-        self.assertIn(self.course.id, all_course_ids)
+        course_ids = [c.id for c in response.context['courses']]
+        self.assertIn(self.course.id, course_ids)
 
     def test_enroll_course_success(self):
         response = self.student_client.post(
@@ -1769,8 +1763,9 @@ class StudentSubmissionsViewTests(BaseTestCase):
 
     def test_submit_assessment_not_enrolled(self):
         other_course = Course.objects.create(
-            code='CS999', name='Other', faculty=self.faculty, semester='Fall 2025',
+            code='CS999', name='Other', semester='Fall 2025',
         )
+        other_course.faculty.add(self.faculty)
         other_assessment = Assessment.objects.create(
             course=other_course, title='Other HW', assessment_type='assignment', status='published',
         )
@@ -1799,16 +1794,15 @@ class StudentAssignmentsViewTests(BaseTestCase):
 
     def test_assignments_context_has_assignments(self):
         response = self.student_client.get(reverse('student_assignments'))
-        assessments = [a for a, _, _ in response.context['assignments_with_status']]
-        self.assertIn(self.assessment, assessments)
+        courses = [c['course'] for c in response.context['course_cards']]
+        self.assertIn(self.course, courses)
 
     def test_submit_assignment_success(self):
         response = self.student_client.post(
             reverse('submit_assignment', args=[self.assessment.id]),
             {'content': 'Here is my assignment answer.'},
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()['success'])
+        self.assertRedirects(response, reverse('student_assignments'))
         self.assertTrue(
             Submission.objects.filter(
                 student=self.student, assessment=self.assessment,
@@ -1817,8 +1811,9 @@ class StudentAssignmentsViewTests(BaseTestCase):
 
     def test_submit_assignment_not_enrolled(self):
         other_course = Course.objects.create(
-            code='OTHER', name='Other Course', faculty=self.faculty, semester='Fall 2025',
+            code='OTHER', name='Other Course', semester='Fall 2025',
         )
+        other_course.faculty.add(self.faculty)
         other_assessment = Assessment.objects.create(
             course=other_course, title='Other A',
             assessment_type='assignment', status='published',
@@ -1836,16 +1831,16 @@ class StudentAssignmentsViewTests(BaseTestCase):
             reverse('submit_assignment', args=[self.assessment.id]),
             {'content': 'Second try'},
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('already submitted', response.json()['error'])
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('already submitted', response.context['error'])
 
     def test_submit_assignment_empty_content_and_no_file(self):
         response = self.student_client.post(
             reverse('submit_assignment', args=[self.assessment.id]),
             {'content': ''},
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('answer', response.json()['error'])
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('answer', response.context['error'])
 
     def test_submit_assignment_with_file(self):
         f = SimpleUploadedFile('answer.txt', b'My solution', content_type='text/plain')
@@ -1853,8 +1848,10 @@ class StudentAssignmentsViewTests(BaseTestCase):
             reverse('submit_assignment', args=[self.assessment.id]),
             {'submitted_file': f},
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()['success'])
+        self.assertRedirects(response, reverse('student_assignments'))
+        self.assertTrue(
+            Submission.objects.filter(student=self.student, assessment=self.assessment).exists()
+        )
 
 
 class StudentNotificationsViewTests(BaseTestCase):
@@ -1928,10 +1925,15 @@ class StudentCLOResultsViewTests(BaseTestCase):
             course=self.course, title='Graded A', assessment_type='quiz',
             total_marks=100, status='published',
         )
-        Submission.objects.create(
+        question = Question.objects.create(
+            assessment=assessment, text='Q1', max_marks=100, order=1,
+        )
+        question.clos.add(self.clo)
+        sub = Submission.objects.create(
             student=self.student, assessment=assessment,
             total_score=85, status='graded',
         )
+        QuestionGrade.objects.create(submission=sub, question=question, marks_obtained=85)
         response = self.student_client.get(reverse('student_clo_results'))
         result = next(r for r in response.context['results'] if r['course'] == self.course)
         self.assertGreaterEqual(result['avg_pct'], 80)
@@ -1963,8 +1965,9 @@ class StudentMaterialsViewTests(BaseTestCase):
 
     def test_materials_unenrolled_redirects(self):
         other_course = Course.objects.create(
-            code='OTH', name='Other', faculty=self.faculty, semester='X',
+            code='OTH', name='Other', semester='X',
         )
+        other_course.faculty.add(self.faculty)
         response = self.student_client.get(
             reverse('student_materials') + f'?course={other_course.id}'
         )
@@ -2114,8 +2117,9 @@ class PermissionTests(BaseTestCase):
             password='pass12345', role='faculty',
         )
         other_course = Course.objects.create(
-            code='OTH', name='Other', faculty=other_faculty, semester='X',
+            code='OTH', name='Other', semester='X',
         )
+        other_course.faculty.add(other_faculty)
         response = self.faculty_client.post(
             reverse('add_clo', args=[other_course.id]),
             data=json.dumps({'description': 'Hack', 'bloom_level': 'Remember (L1)'}),

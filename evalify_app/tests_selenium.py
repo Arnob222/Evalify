@@ -52,16 +52,17 @@ class EvalifyFullSeleniumTests(StaticLiveServerTestCase):
         # Create a course for faculty (for announcements, CLOs, etc.)
         try:
             from evalify_app.models import Course
-            self.course, _ = Course.objects.get_or_create(
+            self.course, created = Course.objects.get_or_create(
                 code='CS-TEST101',
                 defaults={
                     'name': 'Selenium Test Course',
                     'description': 'Course for testing',
                     'credit_hours': 3,
                     'semester': 'Fall 2025',
-                    'faculty': self.faculty_user
                 }
             )
+            if created:
+                self.course.faculty.add(self.faculty_user)
         except ImportError:
             self.course = None
 
@@ -820,9 +821,10 @@ class EvalifyFullSeleniumTests(StaticLiveServerTestCase):
         # Create a new course without any CLOs/assessments
         from evalify_app.models import Course
         empty_course = Course.objects.create(
-            code='NO-DATA', name='Course with no data', faculty=self.faculty_user,
+            code='NO-DATA', name='Course with no data',
             semester='Fall 2025', credit_hours=3
         )
+        empty_course.faculty.add(self.faculty_user)
         self._login_as_faculty()
         self.driver.get(self.live_server_url + f'/faculty/escar/?course={empty_course.id}')
         # Table should contain the empty message
@@ -1119,9 +1121,10 @@ class EvalifyFullSeleniumTests(StaticLiveServerTestCase):
         # Create a new course without any assessments
         from evalify_app.models import Course
         no_assess_course = Course.objects.create(
-            code='NO-ASSESS', name='No assessments', faculty=self.faculty_user,
+            code='NO-ASSESS', name='No assessments',
             semester='Fall 2025', credit_hours=3
         )
+        no_assess_course.faculty.add(self.faculty_user)
         self._login_as_faculty()
         self.driver.get(self.live_server_url + '/faculty/marks-sheet/')
         select = Select(self.driver.find_element(By.CSS_SELECTOR, 'select[name="course"]'))
@@ -1139,9 +1142,10 @@ class EvalifyFullSeleniumTests(StaticLiveServerTestCase):
         # Create a course with assessments but no CLO/PLO mappings
         from evalify_app.models import Course, Assessment, Question
         no_clo_course = Course.objects.create(
-            code='NO-CLO', name='No CLOs', faculty=self.faculty_user,
+            code='NO-CLO', name='No CLOs',
             semester='Fall 2025', credit_hours=3
         )
+        no_clo_course.faculty.add(self.faculty_user)
         # Enroll the test student
         from evalify_app.models import Enrollment
         Enrollment.objects.create(student=self.student_user, course=no_clo_course)

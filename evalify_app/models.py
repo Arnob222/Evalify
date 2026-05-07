@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 import random
 import string
+import re
 
 
 class User(AbstractUser):
@@ -9,7 +10,8 @@ class User(AbstractUser):
         ('faculty', 'Faculty'),
         ('student', 'Student'),
         ('admin', 'Admin'),
-        ('doa', 'DOA'),
+        ('dao', 'DAO'),
+        ('dept_head', 'Department Head'),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='')
     full_name = models.CharField(max_length=200, blank=True)
@@ -97,6 +99,7 @@ class Assessment(models.Model):
                                choices=[('percent','Percent'),('flat','Flat Marks')])
     late_deduction_value = models.FloatField(default=0)
     max_late_days        = models.IntegerField(default=0)
+    sections = models.ManyToManyField('Section', related_name='targeted_assessments', blank=True)
 
     def __str__(self):
         return f"{self.title} ({self.course.code})"
@@ -196,6 +199,7 @@ class StudyMaterial(models.Model):
     material_type = models.CharField(max_length=20, choices=MATERIAL_TYPE_CHOICES, default='lecture_note')
     file          = models.FileField(upload_to='materials/', blank=True, null=True)
     video_url     = models.URLField(blank=True)
+    sections      = models.ManyToManyField('Section', related_name='targeted_materials', blank=True)
     uploaded_by   = models.ForeignKey(User, on_delete=models.CASCADE)
     uploaded_at   = models.DateTimeField(auto_now_add=True)
     is_visible    = models.BooleanField(default=True)
@@ -238,6 +242,7 @@ class Announcement(models.Model):
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
     created_by = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
+    sections   = models.ManyToManyField('Section', related_name='targeted_announcements', blank=True)
 
     def __str__(self):
         return self.title
@@ -301,6 +306,7 @@ class Section(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='sections')
     name = models.CharField(max_length=50)
     batch = models.CharField(max_length=50)
+    code = models.CharField(max_length=20, unique=True, blank=True)
     faculty = models.ManyToManyField(
         User, related_name='teaching_sections', blank=True,
         limit_choices_to={'role': 'faculty'},
@@ -317,6 +323,25 @@ class Section(models.Model):
 
     def __str__(self):
         return f"{self.course.code} | {self.batch} | Sec {self.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self._generate_code()
+        super().save(*args, **kwargs)
+
+    def _generate_code(self):
+        clean = re.sub(r'[^A-Z0-9]', '', self.course.code.upper())
+        parts = self.batch.split()
+        if len(parts) >= 2:
+            batch_short = parts[0][0].upper() + parts[1][-2:]
+        else:
+            batch_short = self.batch[:3].upper()
+        base = f"{clean}-{self.name.upper()}-{batch_short}"
+        code, i = base, 1
+        while Section.objects.filter(code=code).exclude(pk=self.pk or 0).exists():
+            code = f"{base}-{i}"
+            i += 1
+        return code
 
 
 class PastPaper(models.Model):

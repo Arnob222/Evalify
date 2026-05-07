@@ -1,0 +1,52 @@
+{% extends 'faculty/base.html' %}
+{% block nav_analytics %}active{% endblock %}
+
+{% block content %}
+<div class="page-title">ESCAR Report</div>
+<div class="page-sub">Educational Standards, Compliance, and Assessment Review</div>
+
+<!-- Course selector -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+  <span style="font-size:13px;font-weight:600;color:var(--gray);">Course:</span>
+  <select onchange="location.href='?course='+this.value" style="border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:13px;">
+    <option value="">-- Select Course --</option>
+    {% for c in courses %}
+    <option value="{{ c.id }}" {% if c == selected_course %}selected{% endif %}>{{ c.code }} — {{ c.name }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+{% if selected_course %}
+<div class="panel" style="margin-bottom:24px;">
+  <div class="panel-head">
+    <span class="panel-title">ESCAR — {{ selected_course.code }}: {{ selected_course.name }}</span>
+  </div>
+  <div class="panel-body">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;">
+      <div class="stat-card"><div><div class="stat-label">Total Enrolled</div><div class="stat-val">{{ total_enrolled }}</div></div></div>
+      <div class="stat-card"><div><div class="stat-label">Participated</div><div class="stat-val">{{ total_participated }}</div></div></div>
+      <div class="stat-card"><div><div class="stat-label">Absent</div><div class="stat-val">{{ total_absent }}</div></div></div>
+    </div>
+    <div id="escar-table">
+      {% if rows %}
+      <table>
+        <thead><tr><th>CLO</th><th>PLO</th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>{% if row.clo %}{{ row.clo.code }}: {{ row.clo.description }}{% endif %}</td>
+            <td>{% if row.plo %}{{ row.plo.code }}: {{ row.plo.description }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state"><div class="empty-title">No data available</div></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="panel"><div class="panel-body"><div class="empty-state"><div class="empty-title">Select a course to view ESCAR report</div></div></div></div>
+{% endif %}
+{% endblock %}

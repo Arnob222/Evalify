@@ -1,10 +1,10 @@
-{% extends 'doa_portal/base.html' %}
+{% extends 'dept_head_portal/base.html' %}
 {% block nav_sections %}active{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div style="display:flex;align-items:center;gap:14px;">
-    <a href="{% url 'doa_sections' %}" class="btn btn-outline btn-sm">&#8592; Sections</a>
+    <a href="{% url 'dept_head_sections' %}" class="btn btn-outline btn-sm">&#8592; Sections</a>
     <div>
       <div class="page-title">
         {{ section.course.code }} &nbsp;—&nbsp; Section {{ section.name }}
@@ -19,10 +19,13 @@
   <div class="stat-card">
     <div>
       <div class="stat-label">Section</div>
-      <div style="font-size:36px;font-weight:900;color:var(--indigo);">{{ section.name }}</div>
+      <div style="font-size:36px;font-weight:900;color:var(--violet);">{{ section.name }}</div>
       <div class="stat-sub">{{ section.course.code }}</div>
+      {% if section.code %}
+      <div style="margin-top:6px;background:var(--violet-light);color:var(--violet-dark);border-radius:5px;padding:3px 8px;font-family:monospace;font-size:11px;font-weight:700;display:inline-block;letter-spacing:.5px;">{{ section.code }}</div>
+      {% endif %}
     </div>
-    <div class="stat-icon-wrap si-indigo">&#128203;</div>
+    <div class="stat-icon-wrap si-violet">&#128203;</div>
   </div>
   <div class="stat-card">
     <div>
@@ -50,15 +53,15 @@
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:24px;">
 
-  <!-- ── Assign Faculty ── -->
+  <!-- Assign Faculty -->
   <div class="panel">
     <div class="panel-head">
       <span class="panel-title">Assign Faculty</span>
       <span style="font-size:12px;color:var(--gray);">{{ faculty_list|length }} available</span>
     </div>
-    <form method="post" action="{% url 'doa_section_assign_faculty' section.id %}">
+    <form method="post" action="{% url 'dept_head_section_assign_faculty' section.id %}">
       {% csrf_token %}
       <div class="panel-body">
         {% if faculty_list %}
@@ -74,8 +77,8 @@
                  onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
             <input type="checkbox" name="faculty_ids" value="{{ f.id }}"
                    {% if f.id in assigned_faculty_ids %}checked{% endif %}
-                   style="accent-color:var(--indigo);width:15px;height:15px;flex-shrink:0;">
-            <div style="width:32px;height:32px;border-radius:50%;background:var(--indigo-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--indigo);flex-shrink:0;">
+                   style="accent-color:var(--violet);width:15px;height:15px;flex-shrink:0;">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--violet-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--violet);flex-shrink:0;">
               {{ f.full_name|default:f.username|slice:":1"|upper }}
             </div>
             <div style="flex:1;" data-name="{{ f.full_name|lower }} {{ f.email|lower }}">
@@ -91,7 +94,7 @@
         <div class="form-hint" style="margin-top:8px;">Uncheck all to remove all faculty from this section.</div>
         {% else %}
         <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px;font-size:13px;color:#854d0e;">
-          No faculty accounts found. <a href="{% url 'doa_users' %}">Create faculty users first.</a>
+          No faculty accounts found. <a href="{% url 'dept_head_users' %}">Create faculty users first.</a>
         </div>
         {% endif %}
       </div>
@@ -101,16 +104,40 @@
     </form>
   </div>
 
-  <!-- ── Assign Students by ID Range ── -->
+  <!-- Add Single Student -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">Add Single Student</span>
+    </div>
+    <form method="post" action="{% url 'dept_head_section_add_single_student' section.id %}">
+      {% csrf_token %}
+      <div class="panel-body">
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;font-size:12.5px;color:#166534;margin-bottom:16px;">
+          Enter a single student registration ID to add them directly to this section.
+        </div>
+        <div class="form-group">
+          <label class="form-label">Registration ID *</label>
+          <input type="text" name="reg_id" class="form-control" required
+                 placeholder="e.g. 2021035" style="font-family:monospace;letter-spacing:1px;">
+        </div>
+        <div class="form-hint">The student must already have an account in the system.</div>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+        <button type="submit" class="btn btn-primary">&#10133; Add Student</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Assign Students by ID Range -->
   <div class="panel">
     <div class="panel-head">
       <span class="panel-title">Assign Students by Registration ID</span>
     </div>
-    <form method="post" action="{% url 'doa_section_assign_students' section.id %}">
+    <form method="post" action="{% url 'dept_head_section_assign_students' section.id %}">
       {% csrf_token %}
       <div class="panel-body">
-        <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:10px 14px;font-size:12.5px;color:#3730a3;margin-bottom:16px;">
-          Enter a range of student registration IDs. All students whose IDs fall within the range (inclusive) will be added to this section.
+        <div style="background:var(--violet-light);border:1px solid #c4b5fd;border-radius:8px;padding:10px 14px;font-size:12.5px;color:#5b21b6;margin-bottom:16px;">
+          Enter a range of student registration IDs. All students whose IDs fall within the range (inclusive) will be added.
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
@@ -124,7 +151,7 @@
                    placeholder="e.g. 2021060" style="font-family:monospace;letter-spacing:1px;">
           </div>
         </div>
-        <div class="form-hint">Registration IDs are compared alphabetically. Use zero-padded IDs for correct ordering (e.g. 2021001 to 2021060).</div>
+        <div class="form-hint">Use zero-padded IDs for correct ordering (e.g. 2021001 to 2021060).</div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
         <button type="submit" class="btn btn-primary">&#10133; Add Students</button>
@@ -133,7 +160,7 @@
   </div>
 </div>
 
-<!-- ── Student List ── -->
+<!-- Student List -->
 <div class="panel">
   <div class="panel-head">
     <span class="panel-title">Students in this Section</span>
@@ -141,7 +168,6 @@
   </div>
   <div class="panel-body" style="padding:0;">
     {% if students %}
-    <!-- Search -->
     <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
       <div class="search-box">
         <span class="search-icon">&#128269;</span>
@@ -163,7 +189,7 @@
           <tr data-name="{{ s.full_name|lower }} {{ s.username|lower }}">
             <td>
               <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:32px;height:32px;border-radius:50%;background:var(--indigo-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--indigo);flex-shrink:0;">
+                <div style="width:32px;height:32px;border-radius:50%;background:var(--violet-light);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--violet);flex-shrink:0;">
                   {{ s.full_name|default:s.username|slice:":1"|upper }}
                 </div>
                 <div style="font-weight:600;font-size:13px;">{{ s.full_name|default:s.username }}</div>
@@ -172,7 +198,7 @@
             <td><span class="badge badge-gray" style="font-family:monospace;">{{ s.username }}</span></td>
             <td style="font-size:12px;color:var(--gray);">{{ s.email }}</td>
             <td>
-              <form method="post" action="{% url 'doa_section_remove_student' section.id s.id %}">
+              <form method="post" action="{% url 'dept_head_section_remove_student' section.id s.id %}">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-sm"
                         style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;"

@@ -1,4 +1,4 @@
-{% extends 'doa_portal/base.html' %}
+{% extends 'dept_head_portal/base.html' %}
 {% block nav_sections %}active{% endblock %}
 
 {% block content %}
@@ -10,7 +10,6 @@
   <button class="btn btn-primary" onclick="openModal('createSectionModal')">+ Create Section</button>
 </div>
 
-<!-- Filter bar -->
 <form method="get">
   <div class="filter-bar" style="flex-wrap:wrap;">
     <select name="course" class="form-control" style="width:260px;" onchange="this.form.submit()">
@@ -28,7 +27,7 @@
       {% endfor %}
     </select>
     {% if course_id or batch_q %}
-    <a href="{% url 'doa_sections' %}" class="btn btn-outline">Clear</a>
+    <a href="{% url 'dept_head_sections' %}" class="btn btn-outline">Clear</a>
     {% endif %}
     <span style="font-size:13px;color:var(--gray);margin-left:4px;">{{ sections|length }} section{{ sections|length|pluralize }}</span>
   </div>
@@ -44,21 +43,21 @@
           <th>Semester</th>
           <th>Faculty</th>
           <th>Students</th>
-          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for sec in sections %}
         <tr>
           <td>
-            <div style="font-weight:700;color:var(--indigo);">{{ sec.course.code }}</div>
+            <div style="font-weight:700;color:var(--violet);">{{ sec.course.code }}</div>
             <div style="font-size:11px;color:var(--gray);">{{ sec.course.name }}</div>
             <div style="font-size:11px;color:var(--light);">{{ sec.course.semester }}</div>
           </td>
           <td>
-            <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--indigo-light);color:var(--indigo-dark);font-size:16px;font-weight:800;">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--violet-light);color:var(--violet-dark);font-size:16px;font-weight:800;">
               {{ sec.name }}
             </span>
+            <div style="font-size:10px;color:var(--gray);margin-top:3px;font-family:monospace;letter-spacing:.5px;">{{ sec.code }}</div>
           </td>
           <td><span class="badge badge-gray">{{ sec.batch }}</span></td>
           <td>
@@ -71,23 +70,9 @@
             {% endfor %}
           </td>
           <td><span class="badge badge-blue">{{ sec.students.count }}</span></td>
-          <td>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <a href="{% url 'doa_section_detail' sec.id %}" class="btn btn-outline btn-sm">&#9998; Manage</a>
-              <form method="post" action="{% url 'doa_delete_section' sec.id %}" style="display:inline;">
-                {% csrf_token %}
-                <button type="button" class="btn btn-sm"
-                  style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;"
-                  data-label="{{ sec.course.code }} Sec {{ sec.name }}"
-                  onclick="openSectionDelete(this.closest('form'), this.dataset.label)">
-                  Delete
-                </button>
-              </form>
-            </div>
-          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6">
+        <tr><td colspan="5">
           <div class="empty-state">
             <div class="empty-icon">&#128203;</div>
             <div class="empty-title">No sections yet</div>
@@ -107,7 +92,7 @@
       <span class="modal-title">Create New Section</span>
       <button class="modal-close" onclick="closeModal('createSectionModal')">&times;</button>
     </div>
-    <form method="post" action="{% url 'doa_create_section' %}">
+    <form method="post" action="{% url 'dept_head_create_section' %}">
       {% csrf_token %}
       <div class="modal-body">
         <div class="form-group">
@@ -137,7 +122,7 @@
             </select>
           </div>
         </div>
-        <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:7px;padding:10px 14px;font-size:12px;color:#3730a3;">
+        <div style="background:var(--violet-light);border:1px solid #c4b5fd;border-radius:7px;padding:10px 14px;font-size:12px;color:#5b21b6;">
           After creating, you will be taken to the section detail page to assign faculty and students.
         </div>
       </div>
@@ -148,40 +133,4 @@
     </form>
   </div>
 </div>
-
-<!-- Delete Confirmation Modal -->
-<div class="modal-overlay" id="deleteSectionModal">
-  <div class="modal" style="max-width:400px;">
-    <div class="modal-head" style="border-bottom:none;padding-bottom:0;">
-      <span></span>
-      <button class="modal-close" onclick="closeModal('deleteSectionModal')">&times;</button>
-    </div>
-    <div class="modal-body" style="text-align:center;padding-top:8px;">
-      <div style="width:60px;height:60px;border-radius:50%;background:#fef2f2;border:2px solid #fecaca;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:26px;">&#128465;</div>
-      <div style="font-size:17px;font-weight:800;margin-bottom:8px;">Delete Section?</div>
-      <div style="font-size:13px;color:var(--gray);">
-        Delete <strong id="deleteSectionLabel"></strong>?<br>
-        All student and faculty assignments in this section will be removed.
-      </div>
-    </div>
-    <div style="text-align:center;padding:8px 24px 24px;display:flex;gap:10px;justify-content:center;">
-      <button class="btn btn-outline" onclick="closeModal('deleteSectionModal')">Cancel</button>
-      <button id="deleteSectionBtn" class="btn" style="background:#dc2626;color:#fff;font-weight:700;">Yes, Delete</button>
-    </div>
-  </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-let _pendingDeleteForm = null;
-function openSectionDelete(form, label) {
-  _pendingDeleteForm = form;
-  document.getElementById('deleteSectionLabel').textContent = label;
-  openModal('deleteSectionModal');
-}
-document.getElementById('deleteSectionBtn').addEventListener('click', () => {
-  if (_pendingDeleteForm) _pendingDeleteForm.submit();
-});
-</script>
 {% endblock %}
