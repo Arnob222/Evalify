@@ -154,6 +154,11 @@ urlpatterns = [
 
 # Assessment Download
     path('faculty/assignments/<int:assessment_id>/download/<str:fmt>/', views.download_assessment, name='download_assessment'),
+    
 
+# Batch Analytics
+    path('faculty/batch-analytics/', views.faculty_batch_analytics, name='faculty_batch_analytics'),
+    path('dao-portal/batch-analytics/', views.dao_batch_analytics, name='dao_batch_analytics'),
+    path('dept-head/batch-analytics/', views.dept_head_batch_analytics, name='dept_head_batch_analytics'),
 
 ]

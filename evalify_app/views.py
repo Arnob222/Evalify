@@ -4754,4 +4754,398 @@ def download_assessment(request, assessment_id, fmt):
 
 
 
+# ── BATCH PLO ANALYTICS ────────────────────────────────────────────────────────
 
+def _compute_batch_plo_attainment(batch_name):
+    """
+    Batch-level PLO attainment computation.
+    Returns a dict with:
+      - sections: list of section-level data
+      - all_plos: sorted list of PLO codes
+      - overall: overall attainment across all sections
+    """
+    SUB_TYPES = {'mid', 'final'}
+
+    # All sections for this batch
+    sections_qs = Section.objects.filter(batch=batch_name).select_related('course').order_by('name')
+
+    all_plo_codes = set()
+    section_results = []
+
+    # Collect all courses in this batch (unique)
+    courses_in_batch = Course.objects.filter(sections__batch=batch_name).distinct().order_by('code')
+
+    # For each course, precompute PLO attainment logic once
+    # Then we'll slice by section students
+
+    for section in sections_qs:
+        course = section.course
+        section_students = list(section.students.all())
+        student_ids = {s.id for s in section_students}
+
+        if not student_ids:
+            section_results.append({
+                'section': section,
+                'course': course,
+                'plo_data': [],
+                'overall_attainment': 0.0,
+                'present_count': 0,
+                'total_students': 0,
+            })
+            continue
+
+        assessments = list(
+            Assessment.objects.filter(course=course, status='published')
+            .prefetch_related(
+                'questions__clos__plos',
+                'questions__plos',
+                'questions__sub_questions__clos__plos',
+                'questions__sub_questions__plos',
+            )
+            .order_by('assessment_type', 'created_at')
+        )
+
+        all_columns = []
+        for a in assessments:
+            use_subs = a.assessment_type in SUB_TYPES
+            is_final = a.assessment_type == 'final'
+            for q in a.questions.all().order_by('order'):
+                subs = list(q.sub_questions.all().order_by('order')) if use_subs else []
+                if use_subs and subs:
+                    for sq in subs:
+                        all_columns.append({
+                            'is_sub': True, 'entity_id': sq.id, 'max_marks': sq.max_marks,
+                            'plo_ids': [p.id for p in sq.plos.all()],
+                            'is_final': is_final,
+                        })
+                else:
+                    all_columns.append({
+                        'is_sub': False, 'entity_id': q.id, 'max_marks': q.max_marks,
+                        'plo_ids': [p.id for p in q.plos.all()],
+                        'is_final': is_final,
+                    })
+
+        plo_ids_used = set()
+        for col in all_columns:
+            plo_ids_used.update(col['plo_ids'])
+        plos = list(PLO.objects.filter(id__in=plo_ids_used).order_by('code'))
+        plo_max = {p.id: sum(col['max_marks'] for col in all_columns if p.id in col['plo_ids']) for p in plos}
+
+        q_ids  = [col['entity_id'] for col in all_columns if not col['is_sub']]
+        sq_ids = [col['entity_id'] for col in all_columns if col['is_sub']]
+        q_grade_map, sq_grade_map = {}, {}
+        if q_ids:
+            for g in QuestionGrade.objects.filter(
+                question_id__in=q_ids,
+                submission__assessment__course=course,
+                submission__student_id__in=student_ids,
+            ).select_related('submission__student'):
+                q_grade_map.setdefault(g.submission.student_id, {})[g.question_id] = g.marks_obtained
+        if sq_ids:
+            for g in SubQuestionGrade.objects.filter(
+                sub_question_id__in=sq_ids,
+                submission__assessment__course=course,
+                submission__student_id__in=student_ids,
+            ).select_related('submission__student'):
+                sq_grade_map.setdefault(g.submission.student_id, {})[g.sub_question_id] = g.marks_obtained
+
+        has_final_cols = any(col['is_final'] for col in all_columns)
+        present_student_ids = set()
+        for sid in student_ids:
+            sq_m = sq_grade_map.get(sid, {})
+            q_m  = q_grade_map.get(sid, {})
+            if has_final_cols:
+                is_present = any(
+                    col['entity_id'] in (sq_m if col['is_sub'] else q_m)
+                    for col in all_columns if col['is_final']
+                )
+            else:
+                is_present = bool(sq_m or q_m)
+            if is_present:
+                present_student_ids.add(sid)
+        present_count = len(present_student_ids)
+
+        plo_achieved = {p.id: 0 for p in plos}
+        for sid in student_ids:
+            sq_m = sq_grade_map.get(sid, {})
+            q_m  = q_grade_map.get(sid, {})
+            if not sq_m and not q_m:
+                continue
+            for p in plos:
+                mx = plo_max[p.id]
+                if mx == 0:
+                    continue
+                raw = sum(
+                    (sq_m.get(col['entity_id'], 0) if col['is_sub'] else q_m.get(col['entity_id'], 0))
+                    for col in all_columns if p.id in col['plo_ids']
+                )
+                if round(raw / mx * 100, 1) >= 40:
+                    plo_achieved[p.id] += 1
+
+        plo_data = []
+        for p in plos:
+            achieved = plo_achieved[p.id]
+            pct = round(achieved / present_count * 100, 1) if present_count > 0 else 0.0
+            plo_data.append({
+                'code': p.code,
+                'description': p.description,
+                'attainment': pct,
+                'achieved': achieved,
+                'present': present_count,
+                'attained': pct >= 60,
+            })
+            all_plo_codes.add(p.code)
+
+        overall_attainment = round(
+            sum(d['attainment'] for d in plo_data) / len(plo_data), 1
+        ) if plo_data else 0.0
+
+        plo_map = {d['code']: d for d in plo_data}
+        section_results.append({
+            'section': section,
+            'course': course,
+            'plo_data': plo_data,
+            'plo_map': plo_map,
+            'overall_attainment': overall_attainment,
+            'present_count': present_count,
+            'total_students': len(student_ids),
+        })
+
+    # Overall across all sections
+    all_attainments = [r['overall_attainment'] for r in section_results if r['present_count'] > 0]
+    overall_batch_attainment = round(sum(all_attainments) / len(all_attainments), 1) if all_attainments else 0.0
+
+    total_students_all = sum(r['total_students'] for r in section_results)
+    total_present_all  = sum(r['present_count'] for r in section_results)
+
+    return {
+        'section_results': section_results,
+        'all_plo_codes': sorted(all_plo_codes),
+        'overall_batch_attainment': overall_batch_attainment,
+        'total_students': total_students_all,
+        'total_present': total_present_all,
+        'batch_name': batch_name,
+    }
+
+
+@dao_required
+def dao_batch_analytics(request):
+    all_batches = list(
+        Section.objects.values_list('batch', flat=True).distinct().order_by('batch')
+    )
+    selected_batch = request.GET.get('batch', '').strip()
+    if not selected_batch and all_batches:
+        selected_batch = all_batches[0]
+
+    result = None
+    if selected_batch:
+        result = _compute_batch_plo_attainment(selected_batch)
+
+    return render(request, 'dao_portal/batch_analytics.html', {
+        'all_batches': all_batches,
+        'selected_batch': selected_batch,
+        'result': result,
+    })
+
+
+@dept_head_required
+def dept_head_batch_analytics(request):
+    all_batches = list(
+        Section.objects.values_list('batch', flat=True).distinct().order_by('batch')
+    )
+    selected_batch = request.GET.get('batch', '').strip()
+    if not selected_batch and all_batches:
+        selected_batch = all_batches[0]
+
+    result = None
+    if selected_batch:
+        result = _compute_batch_plo_attainment(selected_batch)
+
+    return render(request, 'dept_head_portal/batch_analytics.html', {
+        'all_batches': all_batches,
+        'selected_batch': selected_batch,
+        'result': result,
+    })
+
+
+# ── FACULTY BATCH PLO ANALYTICS ───────────────────────────────────────────────
+
+
+def faculty_batch_analytics(request):
+    """Faculty: batch-wise PLO attainment for their own assigned sections."""
+    if not request.user.is_authenticated or request.user.role != 'faculty':
+        return redirect('sign_in_html')
+
+    SUB_TYPES = {'mid', 'final'}
+
+    # Only sections assigned to this faculty
+    my_sections = Section.objects.filter(faculty=request.user).select_related('course').order_by('batch', 'name')
+
+    # All batches this faculty has
+    all_batches = list(my_sections.values_list('batch', flat=True).distinct().order_by('batch'))
+
+    selected_batch = request.GET.get('batch', '').strip()
+    if not selected_batch and all_batches:
+        selected_batch = all_batches[0]
+
+    result = None
+    if selected_batch:
+        sections_qs = my_sections.filter(batch=selected_batch)
+
+        all_plo_codes = set()
+        section_results = []
+
+        for section in sections_qs:
+            course = section.course
+            # Use Enrollment (same as faculty_analytics) — section.students ManyToMany may be empty
+            section_student_ids_mm = set(section.students.values_list('id', flat=True))
+            enrolled_ids = set(
+                User.objects.filter(enrollments__course=course).values_list('id', flat=True)
+            )
+            # If section has students assigned via ManyToMany use that, else fall back to all enrolled
+            student_ids = section_student_ids_mm if section_student_ids_mm else enrolled_ids
+
+            if not student_ids:
+                section_results.append({
+                    'section': section,
+                    'course': course,
+                    'plo_data': [],
+                    'plo_map': {},
+                    'overall_attainment': 0.0,
+                    'present_count': 0,
+                    'total_students': 0,
+                })
+                continue
+
+            assessments = list(
+                Assessment.objects.filter(course=course, status='published')
+                .prefetch_related(
+                    'questions__plos',
+                    'questions__sub_questions__plos',
+                )
+                .order_by('assessment_type', 'created_at')
+            )
+
+            all_columns = []
+            for a in assessments:
+                use_subs = a.assessment_type in SUB_TYPES
+                is_final = a.assessment_type == 'final'
+                for q in a.questions.all().order_by('order'):
+                    subs = list(q.sub_questions.all().order_by('order')) if use_subs else []
+                    if use_subs and subs:
+                        for sq in subs:
+                            all_columns.append({
+                                'is_sub': True, 'entity_id': sq.id, 'max_marks': sq.max_marks,
+                                'plo_ids': [p.id for p in sq.plos.all()],
+                                'is_final': is_final,
+                            })
+                    else:
+                        all_columns.append({
+                            'is_sub': False, 'entity_id': q.id, 'max_marks': q.max_marks,
+                            'plo_ids': [p.id for p in q.plos.all()],
+                            'is_final': is_final,
+                        })
+
+            plo_ids_used = set()
+            for col in all_columns:
+                plo_ids_used.update(col['plo_ids'])
+            plos = list(PLO.objects.filter(id__in=plo_ids_used).order_by('code'))
+            plo_max = {p.id: sum(col['max_marks'] for col in all_columns if p.id in col['plo_ids']) for p in plos}
+
+            q_ids  = [col['entity_id'] for col in all_columns if not col['is_sub']]
+            sq_ids = [col['entity_id'] for col in all_columns if col['is_sub']]
+            q_grade_map, sq_grade_map = {}, {}
+            if q_ids:
+                for g in QuestionGrade.objects.filter(
+                    question_id__in=q_ids,
+                    submission__assessment__course=course,
+                    submission__student_id__in=student_ids,
+                ).select_related('submission__student'):
+                    q_grade_map.setdefault(g.submission.student_id, {})[g.question_id] = g.marks_obtained
+            if sq_ids:
+                for g in SubQuestionGrade.objects.filter(
+                    sub_question_id__in=sq_ids,
+                    submission__assessment__course=course,
+                    submission__student_id__in=student_ids,
+                ).select_related('submission__student'):
+                    sq_grade_map.setdefault(g.submission.student_id, {})[g.sub_question_id] = g.marks_obtained
+
+            has_final_cols = any(col['is_final'] for col in all_columns)
+            present_student_ids = set()
+            for sid in student_ids:
+                sq_m = sq_grade_map.get(sid, {})
+                q_m  = q_grade_map.get(sid, {})
+                if has_final_cols:
+                    is_present = any(
+                        col['entity_id'] in (sq_m if col['is_sub'] else q_m)
+                        for col in all_columns if col['is_final']
+                    )
+                else:
+                    is_present = bool(sq_m or q_m)
+                if is_present:
+                    present_student_ids.add(sid)
+            present_count = len(present_student_ids)
+
+            plo_achieved = {p.id: 0 for p in plos}
+            for sid in student_ids:
+                sq_m = sq_grade_map.get(sid, {})
+                q_m  = q_grade_map.get(sid, {})
+                if not sq_m and not q_m:
+                    continue
+                for p in plos:
+                    mx = plo_max[p.id]
+                    if mx == 0:
+                        continue
+                    raw = sum(
+                        (sq_m.get(col['entity_id'], 0) if col['is_sub'] else q_m.get(col['entity_id'], 0))
+                        for col in all_columns if p.id in col['plo_ids']
+                    )
+                    if round(raw / mx * 100, 1) >= 40:
+                        plo_achieved[p.id] += 1
+
+            plo_data = []
+            for p in plos:
+                achieved = plo_achieved[p.id]
+                pct = round(achieved / present_count * 100, 1) if present_count > 0 else 0.0
+                plo_data.append({
+                    'code': p.code,
+                    'description': p.description,
+                    'attainment': pct,
+                    'achieved': achieved,
+                    'present': present_count,
+                    'attained': pct >= 60,
+                })
+                all_plo_codes.add(p.code)
+
+            plo_map = {d['code']: d for d in plo_data}
+            overall_attainment = round(
+                sum(d['attainment'] for d in plo_data) / len(plo_data), 1
+            ) if plo_data else 0.0
+
+            section_results.append({
+                'section': section,
+                'course': course,
+                'plo_data': plo_data,
+                'plo_map': plo_map,
+                'overall_attainment': overall_attainment,
+                'present_count': present_count,
+                'total_students': len(student_ids),
+            })
+
+        all_attainments = [r['overall_attainment'] for r in section_results if r['present_count'] > 0]
+        overall_batch_attainment = round(sum(all_attainments) / len(all_attainments), 1) if all_attainments else 0.0
+
+        result = {
+            'section_results': section_results,
+            'all_plo_codes': sorted(all_plo_codes),
+            'overall_batch_attainment': overall_batch_attainment,
+            'total_students': sum(r['total_students'] for r in section_results),
+            'total_present': sum(r['present_count'] for r in section_results),
+            'batch_name': selected_batch,
+        }
+
+    return render(request, 'faculty/batch_analytics.html', {
+        'all_batches': all_batches,
+        'selected_batch': selected_batch,
+        'result': result,
+    })
