@@ -252,6 +252,138 @@
 {% endif %}
 <!-- ══ end semester comparison ══════════════════════════════════════════ -->
 
+<!-- ══ PLO Attainment per Course by Semester ════════════════════════════ -->
+{% if semester_plo_ranking %}
+<div style="background:#fff;border-radius:14px;border:1px solid var(--border);
+            padding:24px;margin-bottom:28px;box-shadow:0 2px 8px rgba(0,0,0,.05);">
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;
+              margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <div>
+      <div style="font-size:18px;font-weight:800;color:var(--text);">PLO Attainment per Course</div>
+      <div style="font-size:13px;color:var(--gray);margin-top:3px;">
+        Courses ranked within each semester by their highest single PLO attainment.
+      </div>
+    </div>
+    <span style="font-size:32px;">🏅</span>
+  </div>
+
+  <!-- Semester tabs -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;">
+    {% for sem_block in semester_plo_ranking %}
+    <button type="button"
+            class="plo-rank-tab {% if forloop.first %}plo-rank-tab-active{% endif %}"
+            data-target="ploRankPanel{{ forloop.counter }}"
+            onclick="switchPloRankTab(this)"
+            style="padding:6px 18px;border-radius:20px;font-size:13px;font-weight:600;
+                   cursor:pointer;border:1.5px solid var(--teal);transition:all .18s;
+                   {% if forloop.first %}background:var(--teal);color:#fff;
+                   {% else %}background:#fff;color:var(--teal);{% endif %}">
+      {{ sem_block.semester }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- Panels (one per semester) -->
+  {% for sem_block in semester_plo_ranking %}
+  <div id="ploRankPanel{{ forloop.counter }}" class="plo-rank-panel"
+       style="{% if not forloop.first %}display:none;{% endif %}">
+
+    {% for c in sem_block.courses %}
+
+    <!-- Course card row -->
+    <div style="border-radius:12px;margin-bottom:14px;overflow:hidden;
+                border:1px solid
+                {% if forloop.first %}#6ee7b7;{% elif forloop.counter == 2 %}#93c5fd;{% elif forloop.counter == 3 %}#fcd34d;{% else %}var(--border);{% endif %}">
+
+      <!-- Course header bar -->
+      <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;
+                  {% if forloop.first %}background:linear-gradient(90deg,#ecfdf5,#f0fdf4);
+                  {% elif forloop.counter == 2 %}background:linear-gradient(90deg,#eff6ff,#f0f9ff);
+                  {% elif forloop.counter == 3 %}background:linear-gradient(90deg,#fffbeb,#fef9c3);
+                  {% else %}background:#f9fafb;{% endif %}">
+
+        <!-- Rank medal -->
+        <div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:13px;font-weight:800;
+                    {% if forloop.first %}background:#059669;color:#fff;
+                    {% elif forloop.counter == 2 %}background:#2563eb;color:#fff;
+                    {% elif forloop.counter == 3 %}background:#d97706;color:#fff;
+                    {% else %}background:#e5e7eb;color:#6b7280;{% endif %}">
+          {% if forloop.first %}🥇{% elif forloop.counter == 2 %}🥈{% elif forloop.counter == 3 %}🥉{% else %}{{ forloop.counter }}{% endif %}
+        </div>
+
+        <!-- Course name + best PLO label -->
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:var(--text);">
+            {{ c.course_code }}
+            <span style="font-weight:400;color:var(--gray);font-size:13px;"> — {{ c.course_name }}</span>
+          </div>
+          <div style="font-size:11px;color:var(--gray);margin-top:2px;">
+            Best PLO:
+            <span style="font-weight:700;color:#1e3a5f;">{{ c.best_plo_code }}</span>
+            — {{ c.best_plo_desc|truncatechars:55 }}
+          </div>
+        </div>
+
+        <!-- Max PLO attainment badge -->
+        <div style="display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;gap:3px;">
+          <span style="font-size:20px;font-weight:800;
+                       {% if c.max_plo_att >= 80 %}color:#059669;
+                       {% elif c.max_plo_att >= 60 %}color:#0f766e;
+                       {% elif c.max_plo_att >= 40 %}color:#d97706;
+                       {% else %}color:#dc2626;{% endif %}">
+            {{ c.max_plo_att }}%
+          </span>
+          <span class="level-pill
+            {% if c.max_plo_att >= 80 %}level-excellent
+            {% elif c.max_plo_att >= 60 %}level-good
+            {% elif c.max_plo_att >= 40 %}level-developing
+            {% else %}level-needs{% endif %}"
+            style="font-size:9px;padding:2px 8px;">
+            {% if c.max_plo_att >= 80 %}Excellent
+            {% elif c.max_plo_att >= 60 %}Good
+            {% elif c.max_plo_att >= 40 %}Developing
+            {% else %}Needs Attention{% endif %}
+          </span>
+        </div>
+
+      </div>
+
+      <!-- All PLOs for this course (mini bars) -->
+      <div style="padding:12px 16px 14px;background:#fff;display:flex;flex-direction:column;gap:8px;">
+        {% for p in c.plo_results %}
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:11px;font-weight:700;color:#1e3a5f;width:44px;flex-shrink:0;">{{ p.code }}</span>
+          <div style="flex:1;height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden;">
+            <div style="height:100%;border-radius:4px;width:{{ p.attainment }}%;transition:width .7s ease;
+                        {% if p.attainment >= 80 %}background:#059669;
+                        {% elif p.attainment >= 60 %}background:#20b2aa;
+                        {% elif p.attainment >= 40 %}background:#f59e0b;
+                        {% else %}background:#ef4444;{% endif %}"></div>
+          </div>
+          <span style="font-size:12px;font-weight:700;width:42px;text-align:right;flex-shrink:0;
+                       {% if p.attainment >= 80 %}color:#059669;
+                       {% elif p.attainment >= 60 %}color:#0f766e;
+                       {% elif p.attainment >= 40 %}color:#d97706;
+                       {% else %}color:#dc2626;{% endif %}">
+            {{ p.attainment }}%
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+
+    </div>
+    {% endfor %}
+
+  </div>
+  {% endfor %}
+
+</div>
+{% endif %}
+<!-- ══ end PLO per-course ranking ═══════════════════════════════════════ -->
+
 {% if results %}
   {% for item in results %}
   <div class="course-card">
@@ -366,6 +498,19 @@
 
 {% block scripts %}
 <script>
+/* ── PLO per-course ranking — semester tab switcher ── */
+function switchPloRankTab(btn) {
+  document.querySelectorAll('.plo-rank-tab').forEach(b => {
+    b.style.background = '#fff'; b.style.color = 'var(--teal)';
+    b.classList.remove('plo-rank-tab-active');
+  });
+  btn.style.background = 'var(--teal)'; btn.style.color = '#fff';
+  btn.classList.add('plo-rank-tab-active');
+  document.querySelectorAll('.plo-rank-panel').forEach(p => p.style.display = 'none');
+  const target = document.getElementById(btn.dataset.target);
+  if (target) target.style.display = 'block';
+}
+
 function getColor(v){
   if(v>=80) return '#10b981';
   if(v>=60) return '#20b2aa';

@@ -1080,6 +1080,218 @@ def faculty_plo_comparison(request):
 
 
 @faculty_required
+def faculty_semester_plo_comparison(request):
+    """
+    Semester-wise PLO attainment comparison for faculty.
+    Aggregates class-level PLO attainment (% of present students ≥40%)
+    across all courses taught by the faculty, grouped by semester.
+    Table: rows = PLOs, columns = semesters.
+    """
+    SUB_TYPES = {'mid', 'final'}
+
+    all_faculty_courses = list(
+        Course.objects.filter(faculty=request.user).order_by('semester', 'code')
+    )
+
+    def _sem_key(s):
+        parts = s.split()
+        year = int(parts[-1]) if len(parts) > 1 and parts[-1].isdigit() else 0
+        order = {'spring': 1, 'summer': 2, 'fall': 3, 'winter': 0}
+        return (year, order.get(parts[0].lower() if parts else '', 5))
+
+    all_semesters = sorted(set(c.semester for c in all_faculty_courses), key=_sem_key)
+    selected_sems = request.GET.getlist('sems')
+    if not selected_sems:
+        selected_sems = list(all_semesters)
+    selected_sems_set = set(selected_sems)
+
+    # semester -> plo_code -> {description, total_achieved, total_present}
+    semester_plo_data = {}
+    all_plo_meta = {}
+    # Track unique present student IDs per semester for the "Students Present" column
+    semester_present_students = {}  # semester -> set of student ids
+
+    for course in all_faculty_courses:
+        if course.semester not in selected_sems_set:
+            continue
+
+        assessments = list(
+            Assessment.objects.filter(course=course, status='published')
+            .prefetch_related(
+                'questions__plos',
+                'questions__sub_questions__plos',
+            )
+            .order_by('assessment_type', 'created_at')
+        )
+
+        all_columns = []
+        for a in assessments:
+            use_subs = a.assessment_type in SUB_TYPES
+            is_final = a.assessment_type == 'final'
+            for q in a.questions.all().order_by('order'):
+                subs = list(q.sub_questions.all().order_by('order')) if use_subs else []
+                if use_subs and subs:
+                    for sq in subs:
+                        all_columns.append({
+                            'is_sub': True, 'entity_id': sq.id,
+                            'max_marks': sq.max_marks,
+                            'plo_ids': [p.id for p in sq.plos.all()],
+                            'is_final': is_final,
+                        })
+                else:
+                    all_columns.append({
+                        'is_sub': False, 'entity_id': q.id,
+                        'max_marks': q.max_marks,
+                        'plo_ids': [p.id for p in q.plos.all()],
+                        'is_final': is_final,
+                    })
+
+        if not all_columns:
+            continue
+
+        plo_ids_used = set()
+        for col in all_columns:
+            plo_ids_used.update(col['plo_ids'])
+        if not plo_ids_used:
+            continue
+
+        plos = list(PLO.objects.filter(id__in=plo_ids_used))
+        plo_max = {
+            p.id: sum(col['max_marks'] for col in all_columns if p.id in col['plo_ids'])
+            for p in plos
+        }
+        for p in plos:
+            all_plo_meta[p.code] = p.description
+
+        q_ids  = [col['entity_id'] for col in all_columns if not col['is_sub']]
+        sq_ids = [col['entity_id'] for col in all_columns if col['is_sub']]
+        q_grade_map, sq_grade_map = {}, {}
+        if q_ids:
+            for g in QuestionGrade.objects.filter(
+                question_id__in=q_ids,
+                submission__assessment__course=course,
+            ).select_related('submission__student'):
+                q_grade_map.setdefault(g.submission.student_id, {})[g.question_id] = g.marks_obtained
+        if sq_ids:
+            for g in SubQuestionGrade.objects.filter(
+                sub_question_id__in=sq_ids,
+                submission__assessment__course=course,
+            ).select_related('submission__student'):
+                sq_grade_map.setdefault(g.submission.student_id, {})[g.sub_question_id] = g.marks_obtained
+
+        students = list(User.objects.filter(enrollments__course=course).distinct())
+
+        has_final_cols = any(col['is_final'] for col in all_columns)
+        present_student_ids = set()
+        for student in students:
+            sq_m = sq_grade_map.get(student.id, {})
+            q_m  = q_grade_map.get(student.id, {})
+            if has_final_cols:
+                is_present = any(
+                    col['entity_id'] in (sq_m if col['is_sub'] else q_m)
+                    for col in all_columns if col['is_final']
+                )
+            else:
+                is_present = bool(sq_m or q_m)
+            if is_present:
+                present_student_ids.add(student.id)
+        present_count = len(present_student_ids)
+
+        if present_count == 0:
+            continue
+
+        plo_achieved = {p.id: 0 for p in plos}
+        for student in students:
+            sq_m = sq_grade_map.get(student.id, {})
+            q_m  = q_grade_map.get(student.id, {})
+            if not sq_m and not q_m:
+                continue
+
+            def _mark(col, _sq=sq_m, _q=q_m):
+                return _sq.get(col['entity_id'], 0) if col['is_sub'] else _q.get(col['entity_id'], 0)
+
+            for p in plos:
+                mx = plo_max[p.id]
+                if mx == 0:
+                    continue
+                raw = sum(_mark(col) for col in all_columns if p.id in col['plo_ids'])
+                if (raw / mx * 100) >= 40:
+                    plo_achieved[p.id] += 1
+
+        semester = course.semester
+        if semester not in semester_plo_data:
+            semester_plo_data[semester] = {}
+        semester_present_students.setdefault(semester, set()).update(present_student_ids)
+
+        for p in plos:
+            if plo_max[p.id] == 0:
+                continue
+            code = p.code
+            if code not in semester_plo_data[semester]:
+                semester_plo_data[semester][code] = {
+                    'description': p.description,
+                    'total_achieved': 0,
+                    'total_present': 0,
+                }
+            semester_plo_data[semester][code]['total_achieved'] += plo_achieved[p.id]
+            semester_plo_data[semester][code]['total_present'] += present_count
+
+    plo_codes = sorted(all_plo_meta.keys())
+    semesters_sorted = sorted(semester_plo_data.keys(), key=_sem_key)
+
+    plo_list = [{'code': c, 'description': all_plo_meta[c]} for c in plo_codes]
+
+    # Rows = semesters, columns = PLOs (standard comparison table orientation)
+    table_rows = []
+    for sem in semesters_sorted:
+        cells = []
+        for code in plo_codes:
+            pe = semester_plo_data.get(sem, {}).get(code)
+            if pe and pe['total_present'] > 0:
+                att = round(pe['total_achieved'] / pe['total_present'] * 100, 1)
+                cells.append({'plo_code': code, 'attainment': att, 'has_data': True})
+            else:
+                cells.append({'plo_code': code, 'attainment': 0, 'has_data': False})
+        table_rows.append({
+            'semester': sem,
+            'present_count': len(semester_present_students.get(sem, set())),
+            'cells': cells,
+        })
+
+    chart_json = json.dumps({
+        'plo_codes': plo_codes,
+        'semesters': semesters_sorted,
+        'datasets': [
+            {
+                'plo': code,
+                'values': [
+                    (
+                        round(semester_plo_data[sem][code]['total_achieved'] /
+                              semester_plo_data[sem][code]['total_present'] * 100, 1)
+                        if (sem in semester_plo_data and code in semester_plo_data[sem]
+                            and semester_plo_data[sem][code]['total_present'] > 0)
+                        else None
+                    )
+                    for sem in semesters_sorted
+                ],
+            }
+            for code in plo_codes
+        ],
+    })
+
+    return render(request, 'faculty/semester_plo_comparison.html', {
+        'all_semesters':  all_semesters,
+        'selected_sems':  selected_sems,
+        'plo_codes':      plo_codes,
+        'plo_list':       plo_list,
+        'table_rows':     table_rows,
+        'semesters':      semesters_sorted,
+        'chart_json':     chart_json,
+        'has_data':       bool(plo_codes and semesters_sorted),
+    })
+
+
+@faculty_required
 def faculty_escar(request):
     courses = Course.objects.filter(faculty=request.user, is_active=True)
     selected_course = None
@@ -1430,6 +1642,8 @@ def student_clo_results(request):
     results = []
     program_plo_data = {}   # plo_id -> {code, description, total_max, total_raw}
     semester_plo_data = {}  # semester -> {plo_id: {code, description, total_max, total_raw}}
+    # semester -> [{course_code, course_name, max_plo_att, best_plo_code, best_plo_desc, plo_results}]
+    semester_course_ranking = {}
     SUB_TYPES = {'mid', 'final'}
 
     for e in enrollments:
@@ -1563,6 +1777,18 @@ def student_clo_results(request):
             semester_plo_data[semester][p.id]['total_max'] += mx
             semester_plo_data[semester][p.id]['total_raw'] += raw
 
+        # Build per-semester course ranking by max PLO attainment
+        if plo_results:
+            best = max(plo_results, key=lambda p: p['attainment'])
+            semester_course_ranking.setdefault(semester, []).append({
+                'course_code': course.code,
+                'course_name': course.name,
+                'max_plo_att': best['attainment'],
+                'best_plo_code': best['code'],
+                'best_plo_desc': best['description'],
+                'plo_results': sorted(plo_results, key=lambda p: p['attainment'], reverse=True),
+            })
+
         graded_count = Submission.objects.filter(
             student=request.user, assessment__in=assessments,
             status__in=['graded', 'flagged'],
@@ -1627,10 +1853,20 @@ def student_clo_results(request):
         'rows': _comparison_rows,
     }
 
+    # Sort each semester's courses by max PLO attainment descending
+    semester_plo_ranking = []
+    for _sem in _semesters:
+        _courses = semester_course_ranking.get(_sem)
+        if not _courses:
+            continue
+        _courses.sort(key=lambda c: c['max_plo_att'], reverse=True)
+        semester_plo_ranking.append({'semester': _sem, 'courses': _courses})
+
     return render(request, 'student/clo_results.html', {
         'results': results,
         'program_plo_attainment': program_plo_attainment,
         'semester_plo_comparison': semester_plo_comparison,
+        'semester_plo_ranking': semester_plo_ranking,
     })
 
 

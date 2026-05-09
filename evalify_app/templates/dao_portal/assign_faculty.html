@@ -1,7 +1,53 @@
-﻿{% extends 'dao_portal/base.html' %}
+{% extends 'dao_portal/base.html' %}
 {% block nav_courses %}active{% endblock %}
 
 {% block content %}
+<style>
+/* ── Searchable faculty picker ── */
+.fac-picker{position:relative;max-width:380px;}
+.fac-display{display:flex;align-items:center;justify-content:space-between;
+  padding:9px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;
+  background:#fff;font-size:14px;color:var(--text);user-select:none;transition:border-color .15s;}
+.fac-display:hover,.fac-display.open{border-color:var(--indigo);}
+.fac-display.open{border-bottom-left-radius:0;border-bottom-right-radius:0;
+  box-shadow:0 0 0 3px rgba(99,102,241,.12);}
+.fac-display .fac-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fac-display .fac-arrow{color:#9ca3af;font-size:11px;margin-left:8px;flex-shrink:0;transition:transform .15s;}
+.fac-display.open .fac-arrow{transform:rotate(180deg);}
+
+.fac-dropdown{display:none;position:absolute;left:0;right:0;z-index:300;
+  background:#fff;border:1px solid var(--indigo);border-top:none;
+  border-bottom-left-radius:7px;border-bottom-right-radius:7px;
+  box-shadow:0 8px 20px rgba(0,0,0,.12);overflow:hidden;}
+.fac-dropdown.open{display:block;}
+
+.fac-search-wrap{padding:8px 10px;border-bottom:1px solid var(--border);position:relative;}
+.fac-search-wrap input{width:100%;padding:6px 10px 6px 30px;border:1px solid var(--border);
+  border-radius:6px;font-size:13px;outline:none;box-sizing:border-box;}
+.fac-search-wrap input:focus{border-color:var(--indigo);}
+.fac-search-icon{position:absolute;left:18px;top:50%;transform:translateY(-50%);
+  color:#9ca3af;font-size:13px;pointer-events:none;}
+
+.fac-list{max-height:220px;overflow-y:auto;}
+.fac-opt{padding:9px 14px;font-size:13px;cursor:pointer;
+  display:flex;align-items:center;gap:10px;transition:background .12s;}
+.fac-opt:hover,.fac-opt.focused{background:#eef2ff;}
+.fac-opt.selected{background:#eef2ff;font-weight:600;}
+.fac-opt.no-match{color:#9ca3af;cursor:default;font-style:italic;padding:10px 14px;}
+.fac-opt .fac-avatar{width:30px;height:30px;border-radius:50%;background:var(--indigo-light);
+  color:var(--indigo);font-size:13px;font-weight:700;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;}
+.fac-opt .fac-info{flex:1;min-width:0;}
+.fac-opt .fac-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fac-opt .fac-email{font-size:11px;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fac-opt .fac-check{color:var(--indigo);font-size:14px;flex-shrink:0;}
+
+.clear-btn{font-size:11px;color:#9ca3af;cursor:pointer;padding:6px 14px;
+  border-top:1px solid var(--border);display:block;text-align:center;
+  transition:color .12s;}
+.clear-btn:hover{color:#ef4444;}
+</style>
+
 <div class="page-header">
   <div style="display:flex;align-items:center;gap:14px;">
     <a href="{% url 'dao_courses' %}" class="btn btn-outline btn-sm">&#8592; Back to Courses</a>
@@ -45,20 +91,25 @@
 </div>
 
 {% if sections %}
-<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:12px 18px;font-size:13px;color:#3730a3;margin-bottom:22px;">
-  &#128274; Reassigning a faculty to a section <strong>replaces</strong> the previous instructor but preserves all course content (CLOs, assessments, submissions, materials). The same faculty member can be assigned to multiple sections.
+<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;
+            padding:12px 18px;font-size:13px;color:#3730a3;margin-bottom:22px;">
+  &#128274; Reassigning a faculty to a section <strong>replaces</strong> the previous instructor
+  but preserves all course content (CLOs, assessments, submissions, materials).
 </div>
 
-<form method="post">
+<form method="post" id="assignForm">
   {% csrf_token %}
   <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px;">
     {% for sec in sections %}
     <div class="panel">
       <div style="display:flex;align-items:stretch;gap:0;">
 
-        <!-- Section badge column -->
-        <div style="padding:18px 22px;border-right:1px solid var(--border);display:flex;align-items:center;gap:14px;min-width:200px;flex-shrink:0;">
-          <div style="width:48px;height:48px;border-radius:50%;background:var(--indigo-light);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:var(--indigo);flex-shrink:0;">
+        <!-- Section badge -->
+        <div style="padding:18px 22px;border-right:1px solid var(--border);
+                    display:flex;align-items:center;gap:14px;min-width:200px;flex-shrink:0;">
+          <div style="width:48px;height:48px;border-radius:50%;background:var(--indigo-light);
+                      display:flex;align-items:center;justify-content:center;
+                      font-size:22px;font-weight:900;color:var(--indigo);flex-shrink:0;">
             {{ sec.name }}
           </div>
           <div>
@@ -67,22 +118,79 @@
           </div>
         </div>
 
-        <!-- Faculty selector column -->
+        <!-- Searchable faculty picker -->
         <div style="flex:1;padding:18px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
           <div style="flex:1;min-width:260px;">
-            <label style="display:block;font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px;">
+            <label style="display:block;font-size:11px;font-weight:700;color:var(--gray);
+                          text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px;">
               Assign Faculty
             </label>
-            <select name="faculty_{{ sec.id }}" class="form-control" style="max-width:380px;">
-              <option value="">— Unassigned —</option>
-              {% for f in faculty_list %}
-              <option value="{{ f.id }}" {% if sec.current_faculty and sec.current_faculty.id == f.id %}selected{% endif %}>
-                {{ f.full_name|default:f.username }} &nbsp;·&nbsp; {{ f.email }}
-              </option>
-              {% endfor %}
-            </select>
+
+            <!-- Hidden input submitted with the form -->
+            <input type="hidden" name="faculty_{{ sec.id }}"
+                   id="hiddenFac_{{ sec.id }}"
+                   value="{% if sec.current_faculty %}{{ sec.current_faculty.id }}{% endif %}">
+
+            <div class="fac-picker" id="picker_{{ sec.id }}">
+              <!-- Trigger button -->
+              <div class="fac-display" id="display_{{ sec.id }}"
+                   onclick="togglePicker('{{ sec.id }}')">
+                <span class="fac-label" id="label_{{ sec.id }}">
+                  {% if sec.current_faculty %}
+                    {{ sec.current_faculty.full_name|default:sec.current_faculty.username }}
+                  {% else %}
+                    — Unassigned —
+                  {% endif %}
+                </span>
+                <span class="fac-arrow">&#9660;</span>
+              </div>
+
+              <!-- Dropdown -->
+              <div class="fac-dropdown" id="dropdown_{{ sec.id }}">
+                <div class="fac-search-wrap">
+                  <span class="fac-search-icon">&#128269;</span>
+                  <input type="text"
+                         id="search_{{ sec.id }}"
+                         placeholder="Search by name or email…"
+                         autocomplete="off"
+                         oninput="filterFaculty('{{ sec.id }}', this.value)"
+                         onkeydown="navKeys(event, '{{ sec.id }}')">
+                </div>
+                <div class="fac-list" id="list_{{ sec.id }}">
+                  <div class="fac-opt {% if not sec.current_faculty %}selected{% endif %}"
+                       data-value="" data-name="Unassigned"
+                       onclick="selectFaculty('{{ sec.id }}', '', '— Unassigned —')">
+                    <span class="fac-avatar" style="background:#f3f4f6;color:#9ca3af;">—</span>
+                    <div class="fac-info">
+                      <div class="fac-name" style="color:#9ca3af;">Unassigned</div>
+                    </div>
+                    {% if not sec.current_faculty %}<span class="fac-check">&#10003;</span>{% endif %}
+                  </div>
+                  {% for f in faculty_list %}
+                  <div class="fac-opt {% if sec.current_faculty and sec.current_faculty.id == f.id %}selected{% endif %}"
+                       data-value="{{ f.id }}"
+                       data-name="{{ f.full_name|default:f.username|lower }} {{ f.email|lower }}"
+                       onclick="selectFaculty('{{ sec.id }}', '{{ f.id }}', '{{ f.full_name|default:f.username }}')">
+                    <div class="fac-avatar">{{ f.full_name|default:f.username|slice:":1"|upper }}</div>
+                    <div class="fac-info">
+                      <div class="fac-name">{{ f.full_name|default:f.username }}</div>
+                      <div class="fac-email">{{ f.email }}</div>
+                    </div>
+                    {% if sec.current_faculty and sec.current_faculty.id == f.id %}
+                    <span class="fac-check">&#10003;</span>{% endif %}
+                  </div>
+                  {% endfor %}
+                </div>
+                <span class="clear-btn" onclick="selectFaculty('{{ sec.id }}', '', '— Unassigned —')">
+                  &#10005; Clear selection
+                </span>
+              </div>
+            </div><!-- /fac-picker -->
+
           </div>
-          <div style="flex-shrink:0;padding-top:18px;">
+
+          <!-- Current assignment badge -->
+          <div style="flex-shrink:0;padding-top:18px;" id="badge_{{ sec.id }}">
             {% if sec.current_faculty %}
             <span class="badge badge-green" style="white-space:nowrap;font-size:12px;padding:5px 12px;">
               &#10003; {{ sec.current_faculty.full_name|default:sec.current_faculty.username }}
@@ -105,7 +213,6 @@
 </form>
 
 {% else %}
-<!-- No sections defined -->
 <div class="panel" style="max-width:560px;">
   <div class="panel-body" style="text-align:center;padding:40px 24px;">
     <div style="font-size:40px;margin-bottom:14px;">&#128203;</div>
@@ -120,4 +227,126 @@
   </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+let openPickerId = null;
+
+function togglePicker(secId) {
+  if (openPickerId && openPickerId !== secId) closePicker(openPickerId);
+  const disp = document.getElementById('display_' + secId);
+  const drop = document.getElementById('dropdown_' + secId);
+  const isOpen = drop.classList.contains('open');
+  if (isOpen) {
+    closePicker(secId);
+  } else {
+    disp.classList.add('open');
+    drop.classList.add('open');
+    openPickerId = secId;
+    const inp = document.getElementById('search_' + secId);
+    inp.value = '';
+    filterFaculty(secId, '');
+    setTimeout(() => inp.focus(), 40);
+  }
+}
+
+function closePicker(secId) {
+  document.getElementById('display_' + secId).classList.remove('open');
+  document.getElementById('dropdown_' + secId).classList.remove('open');
+  if (openPickerId === secId) openPickerId = null;
+}
+
+function selectFaculty(secId, value, labelText) {
+  document.getElementById('hiddenFac_' + secId).value = value;
+  document.getElementById('label_' + secId).textContent = labelText;
+
+  /* update selected highlight */
+  document.querySelectorAll('#list_' + secId + ' .fac-opt').forEach(opt => {
+    const isSel = opt.dataset.value === value;
+    opt.classList.toggle('selected', isSel);
+    const existing = opt.querySelector('.fac-check');
+    if (isSel && !existing) {
+      const chk = document.createElement('span');
+      chk.className = 'fac-check'; chk.textContent = '✓';
+      opt.appendChild(chk);
+    } else if (!isSel && existing) {
+      existing.remove();
+    }
+  });
+
+  /* update badge */
+  const badge = document.getElementById('badge_' + secId);
+  if (value) {
+    badge.innerHTML = `<span class="badge badge-green" style="white-space:nowrap;font-size:12px;padding:5px 12px;">✓ ${labelText}</span>`;
+  } else {
+    badge.innerHTML = `<span class="badge badge-gray">Not assigned</span>`;
+  }
+
+  closePicker(secId);
+}
+
+function filterFaculty(secId, query) {
+  const term = query.trim().toLowerCase();
+  const opts = document.querySelectorAll('#list_' + secId + ' .fac-opt');
+  let anyVisible = false;
+  opts.forEach(opt => {
+    const match = !term || (opt.dataset.name || '').includes(term);
+    opt.style.display = match ? '' : 'none';
+    if (match) anyVisible = true;
+  });
+
+  /* show/hide no-results message */
+  let noMatch = document.getElementById('noMatch_' + secId);
+  if (!anyVisible) {
+    if (!noMatch) {
+      noMatch = document.createElement('div');
+      noMatch.id = 'noMatch_' + secId;
+      noMatch.className = 'fac-opt no-match';
+      noMatch.textContent = 'No faculty found for "' + query + '"';
+      document.getElementById('list_' + secId).appendChild(noMatch);
+    } else {
+      noMatch.style.display = '';
+      noMatch.textContent = 'No faculty found for "' + query + '"';
+    }
+  } else if (noMatch) {
+    noMatch.style.display = 'none';
+  }
+}
+
+/* Keyboard navigation: ArrowDown / ArrowUp / Enter / Escape */
+function navKeys(e, secId) {
+  const list = document.getElementById('list_' + secId);
+  const visible = [...list.querySelectorAll('.fac-opt:not(.no-match)')].filter(o => o.style.display !== 'none');
+  if (!visible.length) return;
+  const focused = list.querySelector('.fac-opt.focused');
+  let idx = focused ? visible.indexOf(focused) : -1;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (focused) focused.classList.remove('focused');
+    idx = (idx + 1) % visible.length;
+    visible[idx].classList.add('focused');
+    visible[idx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (focused) focused.classList.remove('focused');
+    idx = (idx - 1 + visible.length) % visible.length;
+    visible[idx].classList.add('focused');
+    visible[idx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (focused) focused.click();
+  } else if (e.key === 'Escape') {
+    closePicker(secId);
+  }
+}
+
+/* Close on outside click */
+document.addEventListener('click', e => {
+  if (openPickerId && !e.target.closest('#picker_' + openPickerId)) {
+    closePicker(openPickerId);
+  }
+});
+</script>
 {% endblock %}
