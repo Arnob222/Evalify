@@ -1,0 +1,355 @@
+{% extends 'faculty/base.html' %}
+{% block nav_batch_analytics %}active{% endblock %}
+
+{% block content %}
+<style>
+.ba-header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  margin-bottom: 28px; flex-wrap: wrap; gap: 16px;
+}
+.ba-title { font-size: 26px; font-weight: 800; color: var(--text); letter-spacing: -0.5px; }
+.ba-subtitle { font-size: 13px; color: var(--gray); margin-top: 3px; }
+
+.batch-selector-bar {
+  display: flex; align-items: center; gap: 10px;
+  background: #fff; border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 16px; width: fit-content;
+}
+.batch-selector-bar label { font-size: 12px; font-weight: 600; color: var(--gray); white-space: nowrap; }
+.batch-selector-bar select {
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 7px 10px; font-size: 13px; font-family: 'Inter', sans-serif;
+  color: var(--text); outline: none; background: #f9fafb;
+  cursor: pointer; min-width: 160px;
+}
+.batch-selector-bar select:focus { border-color: var(--teal); }
+
+.summary-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 28px; }
+.sum-card {
+  background: #fff; border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;
+  position: relative; overflow: hidden; transition: box-shadow .2s;
+}
+.sum-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.07); }
+.sum-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 3px; border-radius: 12px 12px 0 0;
+}
+.sum-card.c-batch::before  { background: var(--teal); }
+.sum-card.c-total::before  { background: var(--blue); }
+.sum-card.c-graded::before { background: var(--green); }
+.sum-card.c-overall::before{ background: var(--orange); }
+.sum-card-label { font-size: 11px; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: .5px; }
+.sum-card-val { font-size: 30px; font-weight: 800; line-height: 1; color: var(--text); }
+.sum-card-val.attained { color: var(--green); }
+.sum-card-val.bad { color: var(--red); }
+.sum-card-sub { font-size: 11px; color: var(--light); margin-top: 2px; }
+.sum-card-icon { position: absolute; right: 16px; top: 16px; font-size: 22px; opacity: .15; }
+
+.ba-panel { background: #fff; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 20px; overflow: hidden; }
+.ba-panel-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; border-bottom: 1px solid var(--border); background: #fafbfc;
+}
+.ba-panel-title { font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.ba-badge {
+  font-size: 11px; color: var(--gray); background: #f3f4f6;
+  border-radius: 20px; padding: 2px 10px; font-weight: 500;
+}
+.threshold-note {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+  color: var(--gray); background: #f3f4f6; border-radius: 20px; padding: 3px 10px;
+}
+
+.ba-table-wrap { overflow-x: auto; }
+.ba-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ba-table thead tr { background: #f8fafc; border-bottom: 2px solid var(--border); }
+.ba-table th {
+  padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700;
+  color: var(--gray); text-transform: uppercase; letter-spacing: .4px; white-space: nowrap;
+}
+.ba-table th.tc { text-align: center; }
+.ba-table td { padding: 12px 14px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+.ba-table tbody tr:last-child td { border-bottom: none; }
+.ba-table tbody tr:hover { background: #fafbfc; }
+
+.plo-pill {
+  display: inline-block; padding: 4px 10px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.plo-pill.ok  { background: #dcfce7; color: #15803d; }
+.plo-pill.bad { background: #fee2e2; color: #b91c1c; }
+.plo-pill.na  { background: #f3f4f6; color: #9ca3af; font-weight: 400; font-size: 11px; }
+
+.overall-pill {
+  display: inline-block; padding: 5px 14px;
+  border-radius: 20px; font-size: 13px; font-weight: 800;
+}
+.overall-pill.ok  { background: #dcfce7; color: #15803d; }
+.overall-pill.bad { background: #fee2e2; color: #b91c1c; }
+
+.sec-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--teal-light); color: var(--teal-dark);
+  border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 700;
+  white-space: nowrap;
+}
+.course-code { font-weight: 700; color: var(--text); }
+.course-name-sm { font-size: 11px; color: var(--gray); margin-top: 1px; }
+
+.detail-card {
+  background: #fff; border: 1px solid var(--border);
+  border-radius: 12px; margin-bottom: 12px; overflow: hidden; transition: box-shadow .2s;
+}
+.detail-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,.06); }
+.detail-card-head {
+  padding: 14px 20px; display: flex; justify-content: space-between;
+  align-items: center; flex-wrap: wrap; gap: 10px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(to right, #fafbfc, #fff);
+  cursor: pointer; user-select: none;
+}
+.detail-card-left  { display: flex; align-items: center; gap: 12px; }
+.detail-card-right { display: flex; align-items: center; gap: 12px; }
+.detail-meta { font-size: 11px; color: var(--gray); display: flex; align-items: center; gap: 8px; }
+.chevron { font-size: 10px; color: var(--light); transition: transform .25s; }
+.chevron.open { transform: rotate(180deg); }
+
+.plo-row {
+  display: flex; align-items: center; padding: 11px 20px;
+  gap: 14px; border-bottom: 1px solid #f3f4f6; transition: background .15s;
+}
+.plo-row:last-child { border-bottom: none; }
+.plo-row:hover { background: #fafbfc; }
+.plo-code-badge {
+  width: 52px; flex-shrink: 0; font-size: 11px; font-weight: 700;
+  color: var(--teal-dark); background: var(--teal-light);
+  padding: 3px 6px; border-radius: 5px; text-align: center;
+}
+.plo-desc {
+  flex: 1; font-size: 12px; color: var(--gray);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.plo-bar-wrap { width: 140px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+.plo-bar-bg { flex: 1; height: 7px; background: #e5e7eb; border-radius: 10px; overflow: hidden; }
+.plo-bar-fill { height: 100%; border-radius: 10px; transition: width .6s ease; }
+.plo-bar-fill.ok  { background: var(--green); }
+.plo-bar-fill.bad { background: var(--red); }
+.plo-pct { font-size: 12px; font-weight: 700; min-width: 36px; text-align: right; }
+.plo-pct.ok  { color: var(--green); }
+.plo-pct.bad { color: var(--red); }
+.plo-counts { font-size: 11px; color: var(--light); min-width: 70px; text-align: right; flex-shrink: 0; }
+.plo-status-col { min-width: 100px; text-align: right; flex-shrink: 0; }
+
+.detail-body { display: none; }
+.detail-body.open { display: block; }
+
+.ba-empty { text-align: center; padding: 48px 20px; color: var(--light); }
+.ba-empty-icon { font-size: 36px; margin-bottom: 10px; opacity: .45; }
+.ba-empty-msg { font-size: 13px; }
+
+.section-divider {
+  font-size: 11px; font-weight: 700; color: var(--gray);
+  text-transform: uppercase; letter-spacing: .7px; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+</style>
+
+<!-- Page Header -->
+<div class="ba-header">
+  <div>
+    <div class="ba-title">Batch PLO Analytics</div>
+    <div class="ba-subtitle">Section-wise PLO attainment for your assigned batches</div>
+  </div>
+  <form method="get" class="batch-selector-bar">
+    <label>Batch</label>
+    <select name="batch" onchange="this.form.submit()">
+      <option value="">— Select —</option>
+      {% for b in all_batches %}
+      <option value="{{ b }}" {% if selected_batch == b %}selected{% endif %}>{{ b }}</option>
+      {% endfor %}
+    </select>
+    {% if selected_batch %}
+    <a href="{% url 'faculty_batch_analytics' %}" class="btn btn-outline btn-sm">Clear</a>
+    {% endif %}
+  </form>
+</div>
+
+{% if result %}
+
+<!-- Summary Cards -->
+<div class="summary-grid">
+  <div class="sum-card c-batch">
+    <div class="sum-card-icon">🎓</div>
+    <div class="sum-card-label">Batch</div>
+    <div class="sum-card-val" style="font-size:20px;color:var(--teal);">{{ result.batch_name }}</div>
+    <div class="sum-card-sub">{{ result.section_results|length }} section{{ result.section_results|length|pluralize }} assigned to you</div>
+  </div>
+  <div class="sum-card c-total">
+    <div class="sum-card-icon">👥</div>
+    <div class="sum-card-label">Total Students</div>
+    <div class="sum-card-val">{{ result.total_students }}</div>
+    <div class="sum-card-sub">Across your sections</div>
+  </div>
+  <div class="sum-card c-graded">
+    <div class="sum-card-icon">✅</div>
+    <div class="sum-card-label">Graded Students</div>
+    <div class="sum-card-val">{{ result.total_present }}</div>
+    <div class="sum-card-sub">Have assessment data</div>
+  </div>
+  <div class="sum-card c-overall">
+    <div class="sum-card-icon">📊</div>
+    <div class="sum-card-label">Batch Overall</div>
+    <div class="sum-card-val {% if result.overall_batch_attainment >= 60 %}attained{% else %}bad{% endif %}">
+      {{ result.overall_batch_attainment }}%
+    </div>
+    <div class="sum-card-sub">Avg attainment · Target 60%</div>
+  </div>
+</div>
+
+<!-- Summary Table -->
+{% if result.all_plo_codes %}
+<div class="ba-panel" style="margin-bottom:24px;">
+  <div class="ba-panel-head">
+    <div class="ba-panel-title">
+      📋 PLO Attainment Overview
+      <span class="ba-badge">Batch {{ result.batch_name }}</span>
+    </div>
+    <span class="threshold-note">🎯 Student ≥40% · Class target ≥60%</span>
+  </div>
+  <div class="ba-table-wrap">
+    <table class="ba-table">
+      <thead>
+        <tr>
+          <th>Section</th>
+          <th>Course</th>
+          <th class="tc">Students</th>
+          <th class="tc">Graded</th>
+          {% for plo_code in result.all_plo_codes %}<th class="tc">{{ plo_code }}</th>{% endfor %}
+          <th class="tc">Overall</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in result.section_results %}
+        <tr>
+          <td><span class="sec-chip">§ {{ row.section.name }}</span></td>
+          <td>
+            <div class="course-code">{{ row.course.code }}</div>
+            <div class="course-name-sm">{{ row.course.name }}</div>
+          </td>
+          <td style="text-align:center;font-weight:600;">{{ row.total_students }}</td>
+          <td style="text-align:center;color:var(--gray);">{{ row.present_count }}</td>
+          {% for plo_code in result.all_plo_codes %}
+          <td style="text-align:center;">
+            {% for pd in row.plo_data %}{% if pd.code == plo_code %}
+            <span class="plo-pill {% if pd.attainment >= 60 %}ok{% else %}bad{% endif %}">{{ pd.attainment }}%</span>
+            {% endif %}{% endfor %}
+          </td>
+          {% endfor %}
+          <td style="text-align:center;">
+            <span class="overall-pill {% if row.overall_attainment >= 60 %}ok{% else %}bad{% endif %}">
+              {{ row.overall_attainment }}%
+            </span>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="20">
+          <div class="ba-empty"><div class="ba-empty-icon">📭</div><div class="ba-empty-msg">No sections found for this batch.</div></div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Section Details -->
+<div class="section-divider">Section Details</div>
+
+{% for row in result.section_results %}
+<div class="detail-card">
+  <div class="detail-card-head" onclick="toggleSec('s{{ forloop.counter }}')">
+    <div class="detail-card-left">
+      <span class="sec-chip">§ {{ row.section.name }}</span>
+      <div>
+        <div style="font-size:14px;font-weight:700;">{{ row.course.code }}</div>
+        <div style="font-size:11px;color:var(--gray);">{{ row.course.name }}</div>
+      </div>
+    </div>
+    <div class="detail-card-right">
+      <div class="detail-meta">
+        <span>👤 {{ row.total_students }}</span>
+        <span style="color:var(--border);">·</span>
+        <span>✅ {{ row.present_count }} graded</span>
+      </div>
+      <span class="overall-pill {% if row.overall_attainment >= 60 %}ok{% else %}bad{% endif %}">
+        {{ row.overall_attainment }}%
+      </span>
+      <span class="chevron" id="chev-s{{ forloop.counter }}">▼</span>
+    </div>
+  </div>
+
+  <div class="detail-body {% if forloop.first %}open{% endif %}" id="s{{ forloop.counter }}">
+    {% if row.plo_data %}
+      {% for pd in row.plo_data %}
+      <div class="plo-row">
+        <span class="plo-code-badge">{{ pd.code }}</span>
+        <div class="plo-desc" title="{{ pd.description }}">{{ pd.description }}</div>
+        <div class="plo-bar-wrap">
+          <div class="plo-bar-bg">
+            <div class="plo-bar-fill {% if pd.attained %}ok{% else %}bad{% endif %}" style="width:{{ pd.attainment }}%;"></div>
+          </div>
+          <span class="plo-pct {% if pd.attained %}ok{% else %}bad{% endif %}">{{ pd.attainment }}%</span>
+        </div>
+        <div class="plo-counts">{{ pd.achieved }}/{{ pd.present }}</div>
+        <div class="plo-status-col">
+          <span class="plo-pill {% if pd.attained %}ok{% else %}bad{% endif %}">
+            {% if pd.attained %}✓ Attained{% else %}✗ Not Attained{% endif %}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="ba-empty">
+      <div class="ba-empty-icon">📝</div>
+      <div class="ba-empty-msg">No graded assessments for this section yet.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% elif selected_batch %}
+<div class="ba-panel">
+  <div class="ba-empty" style="padding:60px 20px;">
+    <div class="ba-empty-icon">📭</div>
+    <div class="ba-empty-msg">No sections found for batch <strong>{{ selected_batch }}</strong> assigned to you.</div>
+  </div>
+</div>
+{% else %}
+<div class="ba-panel">
+  <div class="ba-empty" style="padding:60px 20px;">
+    <div class="ba-empty-icon">📊</div>
+    <div class="ba-empty-msg">Select a batch above to view PLO attainment analytics.</div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+function toggleSec(id) {
+  const body = document.getElementById(id);
+  const chev = document.getElementById('chev-' + id);
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (chev) chev.classList.toggle('open', open);
+}
+// Auto-open first chevron indicator
+document.addEventListener('DOMContentLoaded', function() {
+  const firstChev = document.getElementById('chev-s1');
+  if (firstChev) firstChev.classList.add('open');
+});
+</script>
+{% endblock %}

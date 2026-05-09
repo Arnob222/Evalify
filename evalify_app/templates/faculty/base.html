@@ -236,6 +236,11 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
     <a href="{% url 'faculty_enrolled_students' %}" class="{% block nav_enrolled_students %}{% endblock %}">
       <span class="nav-icon"></span> Enrolled Students
     </a>
+
+    <a href="{% url 'faculty_batch_analytics' %}" class="{% block nav_batch_analytics %}{% endblock %}">
+      <span class="nav-icon"></span> Batch Analytics
+    </a>
+    
   </nav>
   <div class="sidebar-footer">
     <div class="user-name">{{ request.user.full_name|default:request.user.username }}</div>

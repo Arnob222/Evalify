@@ -1,0 +1,220 @@
+{% extends 'dept_head_portal/base.html' %}
+{% block nav_batch_analytics %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Batch PLO Analytics</div>
+    <div class="page-sub">Section-wise & overall PLO attainment for a batch</div>
+  </div>
+</div>
+
+<!-- Batch selector -->
+<form method="get" style="margin-bottom:24px;">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <label style="font-weight:600;font-size:14px;">Select Batch:</label>
+    <select name="batch" class="form-control" style="max-width:220px;">
+      <option value="">— Select Batch —</option>
+      {% for b in all_batches %}
+      <option value="{{ b }}" {% if selected_batch == b %}selected{% endif %}>{{ b }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">View Analytics</button>
+    {% if selected_batch %}
+    <a href="{% url 'dept_head_batch_analytics' %}" class="btn btn-outline">Clear</a>
+    {% endif %}
+  </div>
+</form>
+
+{% if result %}
+
+<!-- Summary cards -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Batch</div>
+      <div style="font-size:22px;font-weight:800;color:var(--indigo);">{{ result.batch_name }}</div>
+      <div class="stat-sub">{{ result.section_results|length }} section(s)</div>
+    </div>
+    <div class="stat-icon-wrap si-indigo">&#127979;</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Total Students</div>
+      <div class="stat-val">{{ result.total_students }}</div>
+      <div class="stat-sub">Across all sections</div>
+    </div>
+    <div class="stat-icon-wrap si-blue">&#128101;</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Graded Students</div>
+      <div class="stat-val">{{ result.total_present }}</div>
+      <div class="stat-sub">Present in assessments</div>
+    </div>
+    <div class="stat-icon-wrap si-green">&#9989;</div>
+  </div>
+  <div class="stat-card">
+    <div>
+      <div class="stat-label">Overall Attainment</div>
+      <div class="stat-val" style="color:{% if result.overall_batch_attainment >= 60 %}var(--green){% else %}var(--red){% endif %};">
+        {{ result.overall_batch_attainment }}%
+      </div>
+      <div class="stat-sub">Batch average (threshold: 60%)</div>
+    </div>
+    <div class="stat-icon-wrap {% if result.overall_batch_attainment >= 60 %}si-green{% else %}si-red{% endif %}">
+      {% if result.overall_batch_attainment >= 60 %}&#10003;{% else %}&#9888;{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Overall batch summary by PLO -->
+{% if result.all_plo_codes %}
+<div class="panel" style="margin-bottom:28px;">
+  <div class="panel-head">
+    <span class="panel-title">&#128202; Overall Batch PLO Attainment Summary — {{ result.batch_name }}</span>
+    <span style="font-size:12px;color:var(--gray);">Avg across all sections · Threshold: 60%</span>
+  </div>
+  <div class="panel-body" style="padding:0;">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Course</th>
+            <th>Students</th>
+            <th>Graded</th>
+            {% for plo_code in result.all_plo_codes %}
+            <th style="text-align:center;">{{ plo_code }}</th>
+            {% endfor %}
+            <th style="text-align:center;">Section Overall</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.section_results %}
+          <tr>
+            <td><strong>Sec {{ row.section.name }}</strong></td>
+            <td>{{ row.course.code }}<br><small style="color:var(--gray);">{{ row.course.name }}</small></td>
+            <td>{{ row.total_students }}</td>
+            <td>{{ row.present_count }}</td>
+            {% for plo_code in result.all_plo_codes %}
+              {% with plo_found=None %}
+              {% for pd in row.plo_data %}
+                {% if pd.code == plo_code %}
+                  <td style="text-align:center;">
+                    <span style="display:inline-block;padding:3px 8px;border-radius:12px;font-size:12px;font-weight:700;
+                      background:{% if pd.attainment >= 60 %}#d1fae5{% else %}#fee2e2{% endif %};
+                      color:{% if pd.attainment >= 60 %}#065f46{% else %}#991b1b{% endif %};">
+                      {{ pd.attainment }}%
+                    </span>
+                  </td>
+                {% endif %}
+              {% endfor %}
+              {% endwith %}
+              {# If PLO not mapped to this section's course, show dash #}
+              {% with found=False %}
+              {% for pd in row.plo_data %}{% if pd.code == plo_code %}{% with found=True %}{% endwith %}{% endif %}{% endfor %}
+              {% endwith %}
+            {% endfor %}
+            <td style="text-align:center;">
+              <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:13px;font-weight:800;
+                background:{% if row.overall_attainment >= 60 %}#d1fae5{% else %}#fee2e2{% endif %};
+                color:{% if row.overall_attainment >= 60 %}#065f46{% else %}#991b1b{% endif %};">
+                {{ row.overall_attainment }}%
+              </span>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="20" style="text-align:center;color:var(--gray);">No sections found for this batch.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Per-section detailed cards -->
+{% for row in result.section_results %}
+<div class="panel" style="margin-bottom:24px;">
+  <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <span class="panel-title">
+        &#128218; {{ row.course.code }} — Section {{ row.section.name }}
+        <span style="font-size:12px;font-weight:400;color:var(--gray);">({{ row.course.name }})</span>
+      </span>
+    </div>
+    <div style="display:flex;gap:16px;align-items:center;">
+      <span style="font-size:12px;color:var(--gray);">{{ row.total_students }} students · {{ row.present_count }} graded</span>
+      <span style="padding:4px 14px;border-radius:16px;font-size:13px;font-weight:700;
+        background:{% if row.overall_attainment >= 60 %}#d1fae5{% else %}#fee2e2{% endif %};
+        color:{% if row.overall_attainment >= 60 %}#065f46{% else %}#991b1b{% endif %};">
+        Overall: {{ row.overall_attainment }}%
+      </span>
+    </div>
+  </div>
+  <div class="panel-body" style="padding:0;">
+    {% if row.plo_data %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>PLO</th>
+            <th>Description</th>
+            <th>Achieved (≥40%)</th>
+            <th>Graded</th>
+            <th>Attainment %</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pd in row.plo_data %}
+          <tr>
+            <td><strong>{{ pd.code }}</strong></td>
+            <td style="max-width:320px;font-size:13px;">{{ pd.description }}</td>
+            <td>{{ pd.achieved }}</td>
+            <td>{{ pd.present }}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;background:#e5e7eb;border-radius:4px;height:8px;min-width:80px;">
+                  <div style="width:{{ pd.attainment }}%;background:{% if pd.attained %}var(--green){% else %}var(--red){% endif %};height:8px;border-radius:4px;"></div>
+                </div>
+                <span style="font-weight:700;font-size:13px;">{{ pd.attainment }}%</span>
+              </div>
+            </td>
+            <td>
+              {% if pd.attained %}
+              <span class="badge badge-green">&#10003; Attained</span>
+              {% else %}
+              <span class="badge badge-red">&#10007; Not Attained</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding:24px;text-align:center;color:var(--gray);">
+      No PLO data available — no graded assessments found for this section.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% elif selected_batch %}
+<div class="panel">
+  <div class="panel-body" style="text-align:center;padding:40px;color:var(--gray);">
+    No sections found for batch <strong>{{ selected_batch }}</strong>.
+  </div>
+</div>
+{% else %}
+<div class="panel">
+  <div class="panel-body" style="text-align:center;padding:40px;color:var(--gray);">
+    Select a batch above to view analytics.
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
