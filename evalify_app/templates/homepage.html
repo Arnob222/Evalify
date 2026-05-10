@@ -5,67 +5,209 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Evalify - Smart Assessment Platform</title>
-    <link rel="icon" type="image/png" href="{% static 'images/Evalify_icon.png' %}">
-
+    <link rel="icon" type="image/png" href="{% static 'images/evalify_icon.PNG' %}">
     <link rel="stylesheet" href="{% static 'css/homepage_style.css' %}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
+    <div class="bg-grid"></div>
+    <div class="bg-glow"></div>
+
+    <!-- Navbar -->
     <nav>
         <div class="logo">
-    <img src="{% static 'images/evalify_icon.png' %}" alt="Evalify Logo" class="nav-logo">
-    <span class="logo-text">Evalify</span>
-</div>
+            <img src="{% static 'images/evalify_icon.PNG' %}" alt="Evalify Logo" class="nav-logo">
+            <span class="logo-text">Evalify</span>
+        </div>
         <div class="nav-buttons">
-            <a href="{% url 'sign_up_html' %}">
-    <button class="btn-signup">SIGN UP</button>
-</a>
-
-<a href="{% url 'sign_in_html' %}">
-    <button class="btn-signin">SIGN IN</button>
-</a>
+            <a href="{% url 'sign_up_html' %}"><button class="btn-signup">Sign Up</button></a>
+            <a href="{% url 'sign_in_html' %}"><button class="btn-signin">Sign In</button></a>
         </div>
     </nav>
 
+    <!-- Hero: two-column -->
     <header class="hero">
-        <div class="badge">• OBE-Based Smart Assessment Platform</div>
-        <h1>Measure Learning.<br><span>Improve Outcomes.</span></h1>
-        <p class="description">
-            Link every question to CLOs & PLOs. Track attainment in real time. 
-            Fair, transparent, outcome-based assessment for modern education.
-        </p>
+        <div class="hero-left">
+            <div class="badge">
+                <span class="badge-dot"></span>
+                OBE-Based Smart Assessment Platform
+            </div>
+            <h1>Measure<br>Learning.<br><span class="accent">Improve<br>Outcomes.</span></h1>
+            <p class="description">
+                Link every question to CLOs &amp; PLOs. Track attainment
+                in real time. Fair, transparent, outcome-based assessment
+                for modern education.
+            </p>
+            <div class="hero-cta">
+                <a href="{% url 'sign_up_html' %}"><button class="btn-primary">Get Started Free</button></a>
+                <a href="{% url 'sign_in_html' %}"><button class="btn-ghost">Sign In &rarr;</button></a>
+            </div>
+        </div>
+
+        <!-- Right: floating card panel -->
+        <div class="hero-right" aria-hidden="true">
+            <div class="panel-card card-top">
+                <div class="card-row">
+                    <div class="card-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    </div>
+                    <div>
+                        <p class="card-title">CLO Attainment</p>
+                        <p class="card-sub">Course Learning Outcome</p>
+                    </div>
+                    <span class="card-badge green">88%</span>
+                </div>
+                <div class="mini-bar">
+                    <div class="mini-bar-fill" style="width:88%"></div>
+                </div>
+            </div>
+
+            <div class="panel-card card-mid">
+                <p class="card-label">PLO Mapping</p>
+                <div class="plo-grid">
+                    <div class="plo-chip active">PLO 1</div>
+                    <div class="plo-chip active">PLO 2</div>
+                    <div class="plo-chip">PLO 3</div>
+                    <div class="plo-chip active">PLO 4</div>
+                    <div class="plo-chip">PLO 5</div>
+                    <div class="plo-chip active">PLO 6</div>
+                </div>
+            </div>
+
+            <div class="panel-card card-bot">
+                <div class="card-row">
+                    <div class="card-icon green">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </div>
+                    <div>
+                        <p class="card-title">Assessment Graded</p>
+                        <p class="card-sub">Midterm · Section A</p>
+                    </div>
+                    <span class="card-badge cyan">Done</span>
+                </div>
+            </div>
+
+            <!-- Decorative ring -->
+            <div class="deco-ring"></div>
+        </div>
     </header>
 
-    <section class="mode-selection">
-        <div class="mode-card faculty" id="facultyCard">
-            <strong>Faculty Mode</strong>
-            <small>Create assessments & grade with CLO/PLO</small>
+    <!-- Stats bar -->
+    <div class="stats-wrap">
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-num">CLO</span>
+                <span class="stat-label">Linked Questions</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <span class="stat-num">PLO</span>
+                <span class="stat-label">Attainment Tracking</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <span class="stat-num">Real&#8209;time</span>
+                <span class="stat-label">Analytics</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+                <span class="stat-num">OBE</span>
+                <span class="stat-label">Standards</span>
+            </div>
         </div>
-        <div class="mode-card student" id="studentCard">
-            <strong>Student Mode</strong>
-            <small>Submit work & view CLO/PLO results</small>
+    </div>
+
+    <!-- Mode Selection -->
+    <section class="mode-section">
+        <p class="section-label">Choose your role</p>
+        <div class="mode-selection">
+            <a href="{% url 'sign_in_html' %}" class="mode-card faculty" id="facultyCard">
+                <div class="mode-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
+                        <path d="M6 12v5c3 3 9 3 12 0v-5"/>
+                    </svg>
+                </div>
+                <div class="mode-content">
+                    <strong>Faculty Mode</strong>
+                    <small>Create assessments &amp; grade with CLO/PLO mapping</small>
+                </div>
+                <span class="mode-arrow">&rarr;</span>
+            </a>
+            <a href="{% url 'sign_in_html' %}" class="mode-card student" id="studentCard">
+                <div class="mode-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                </div>
+                <div class="mode-content">
+                    <strong>Student Mode</strong>
+                    <small>Submit work &amp; view your CLO/PLO results</small>
+                </div>
+                <span class="mode-arrow">&rarr;</span>
+            </a>
         </div>
     </section>
 
-    <footer class="features-grid">
-        <div class="feature-item">
-            <h3>CLO & PLO Linked</h3>
-            <p>Every question maps to Course & Program Learning Outcomes</p>
+    <!-- Features -->
+    <section class="features-section">
+        <p class="section-label">What Evalify offers</p>
+        <div class="features-grid">
+            <div class="feature-item">
+                <div class="feature-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                </div>
+                <h3>CLO &amp; PLO Linked</h3>
+                <p>Every question maps directly to Course &amp; Program Learning Outcomes for meaningful assessment.</p>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                </div>
+                <h3>Smart Analytics</h3>
+                <p>Visual dashboards showing attainment trends, batch comparisons, and outcome progress at a glance.</p>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                </div>
+                <h3>Integrity Checks</h3>
+                <p>Grace period management, submission tracking, and file validation to ensure fair assessments.</p>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                </div>
+                <h3>Fair Assessment</h3>
+                <p>Standardized grading rubrics tied to learning outcomes, removing bias from the evaluation process.</p>
+            </div>
         </div>
-        <div class="feature-item">
-            <h3>Smart Analytics</h3>
-            <p>Every question maps to Course & Program Learning Outcomes</p>
+    </section>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="footer-logo">
+            <img src="{% static 'images/evalify_icon.PNG' %}" alt="Evalify" class="footer-icon">
+            <span class="logo-text" style="font-size:17px;">Evalify</span>
         </div>
-        <div class="feature-item">
-            <h3>Integrity Checks</h3>
-            <p>Every question maps to Course & Program Learning Outcomes</p>
-        </div>
-        <div class="feature-item">
-            <h3>Fair Assessment</h3>
-            <p>Every question maps to Course & Program Learning Outcomes</p>
-        </div>
+        <p class="footer-copy">&copy; 2026 Evalify &mdash; Outcome-Based Education Assessment Platform.</p>
     </footer>
 
-    <script src="{% static 'js/homepage_script.js' %}"></script></body>
+    <script src="{% static 'js/homepage_script.js' %}"></script>
+</body>
 </html>
