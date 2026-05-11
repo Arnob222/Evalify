@@ -163,7 +163,13 @@ tbody tr:hover td { background:#fafbfc; }
       <span class="nav-icon"></span> Submissions
     </a>
     <div class="nav-section">Analytics</div>
+    <a href="{% url 'admin_analytics' %}" class="{% block nav_analytics %}{% endblock %}">PLO Attainment</a>
     <a href="{% url 'admin_escar' %}" class="{% block nav_escar %}{% endblock %}">ESCAR</a>
+    <a href="{% url 'admin_batch_analytics' %}" class="{% block nav_batch_analytics %}{% endblock %}">Batch Analytics</a>
+    <a href="{% url 'admin_plo_comparison' %}" class="{% block nav_plo_comparison %}{% endblock %}">PLO Comparison</a>
+    <a href="{% url 'admin_semester_plo_comparison' %}" class="{% block nav_semester_plo_comparison %}{% endblock %}">Semester PLO</a>
+    <a href="{% url 'admin_students' %}" class="{% block nav_students %}{% endblock %}">Students</a>
+    <a href="{% url 'admin_marks_sheet' %}" class="{% block nav_marks_sheet %}{% endblock %}">Marks Sheet</a>
   </nav>
   <div class="sidebar-footer">
     <div class="user-info">

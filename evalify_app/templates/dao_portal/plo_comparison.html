@@ -1,0 +1,285 @@
+{% extends 'dao_portal/base.html' %}
+{% block nav_plo_comparison %}active{% endblock %}
+
+{% block content %}
+<style>
+.pc-title{font-size:22px;font-weight:800;color:var(--text);}
+.pc-sub{font-size:13px;color:var(--gray);margin-bottom:22px;}
+.ctrl-bar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:22px;}
+.ctrl-group{display:flex;flex-direction:column;gap:5px;}
+.ctrl-label{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;}
+.sem-search-wrap{position:relative;width:260px;}
+.sem-search-wrap input{width:100%;padding:7px 10px 7px 30px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box;}
+.sem-search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;pointer-events:none;}
+.sem-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-width:700px;}
+.sem-pill{padding:4px 13px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--indigo);background:var(--indigo);color:#fff;transition:all .18s;}
+.sem-pill.inactive{background:#fff;color:var(--indigo);}
+.sem-pill-hidden{display:none;}
+.sem-count{font-size:12px;color:var(--gray);margin-top:6px;}
+.att-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;align-items:center;}
+.att-legend-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray);}
+.att-dot{width:10px;height:10px;border-radius:50%;}
+.cmp-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px;border:1px solid var(--border);}
+.cmp-table{width:100%;border-collapse:collapse;font-size:13px;min-width:500px;}
+.cmp-table thead tr:first-child{background:#1e3a5f;color:#fff;}
+.cmp-table thead tr:last-child{background:#2d5f8a;color:#fff;font-size:11px;}
+.cmp-table th{padding:9px 14px;font-weight:700;text-align:center;white-space:nowrap;}
+.cmp-table th.left{text-align:left;}
+.cmp-table td{padding:9px 14px;text-align:center;border-bottom:1px solid var(--border);vertical-align:middle;}
+.cmp-table td.left{text-align:left;font-weight:700;white-space:nowrap;}
+.cmp-table tbody tr:last-child td{border-bottom:none;}
+.cmp-table tbody tr:nth-child(odd){background:#fafafa;}
+.cmp-table tbody tr:hover{background:#f0f9ff;}
+.att-cell{display:inline-flex;flex-direction:column;align-items:center;gap:2px;}
+.att-pct{font-size:14px;font-weight:800;}
+.att-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap;}
+.att-exc{background:#d1fae5;color:#065f46;}
+.att-good{background:#ccfbf1;color:#0f766e;}
+.att-dev{background:#fef3c7;color:#92400e;}
+.att-need{background:#fee2e2;color:#991b1b;}
+.att-na{color:#d1d5db;font-size:13px;}
+.chart-toggle{display:flex;gap:6px;}
+.chart-btn{padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:#f9fafb;color:var(--gray);transition:all .15s;}
+.chart-btn.active{background:var(--indigo);color:#fff;border-color:var(--indigo);}
+.pc-empty{text-align:center;padding:60px 20px;}
+.pc-empty-icon{font-size:48px;margin-bottom:12px;}
+.pc-empty-title{font-size:17px;font-weight:700;margin-bottom:6px;}
+</style>
+
+<div style="margin-bottom:6px;">
+  <div class="pc-title">PLO Comparison</div>
+  <div class="pc-sub">Compare Program Learning Outcome attainment across semesters for the same course.</div>
+</div>
+
+<form method="get" id="pcForm">
+<div class="panel" style="margin-bottom:20px;padding:18px 20px;">
+  <div class="ctrl-bar" style="margin-bottom:14px;">
+    <div class="ctrl-group">
+      <label class="ctrl-label">Course</label>
+      <select name="course_code" class="form-control" style="width:280px;" onchange="document.getElementById('pcForm').submit()">
+        {% for cc in course_codes %}
+        <option value="{{ cc.code }}" {% if cc.code == selected_code %}selected{% endif %}>{{ cc.code }} — {{ cc.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if courses_for_code %}
+    <div class="ctrl-group" style="flex:1;min-width:260px;max-width:660px;">
+      <label class="ctrl-label">Semesters to Compare <span id="semSelCount" style="font-weight:400;margin-left:4px;">({{ courses_for_code|length }} available)</span></label>
+      <div class="sem-search-wrap">
+        <span class="sem-search-icon">&#128269;</span>
+        <input type="text" id="semSearchBox" placeholder="Search semester…" autocomplete="off" oninput="filterSemPills(this.value)">
+      </div>
+      <div class="sem-pills" id="semPillBox">
+        {% for c in courses_for_code %}
+        <button type="button" class="sem-pill {% if selected_ids and c.id not in selected_ids %}inactive{% endif %}" data-id="{{ c.id }}" data-sem="{{ c.semester }}" onclick="toggleSemPill(this)">
+          {{ c.semester }}{% if c.is_archived %} ✦{% endif %}
+        </button>
+        {% endfor %}
+      </div>
+      <div class="sem-count" id="semCountLabel"></div>
+    </div>
+    <div class="ctrl-group" style="align-self:flex-end;">
+      <button type="button" onclick="selectAllSems()" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;background:#f9fafb;color:var(--gray);">Select All</button>
+    </div>
+    <div class="ctrl-group" style="align-self:flex-end;">
+      <button type="submit" class="btn btn-primary" style="padding:7px 18px;">Apply</button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+</form>
+
+{% if not course_codes %}
+<div class="panel pc-empty">
+  <div class="pc-empty-icon">&#128218;</div>
+  <div class="pc-empty-title">No Courses Found</div>
+  <div style="font-size:13px;color:var(--gray);">No courses exist in the system yet.</div>
+</div>
+{% elif not has_data %}
+<div class="panel pc-empty">
+  <div class="pc-empty-icon">&#128202;</div>
+  <div class="pc-empty-title">No PLO Data Available</div>
+  <div style="font-size:13px;color:var(--gray);">The selected semesters have no published assessments with PLO mappings, or no students have been graded yet.</div>
+</div>
+{% else %}
+
+<div class="att-legend" style="margin-bottom:14px;">
+  <span style="font-size:12px;font-weight:600;color:var(--gray);">Attainment key:</span>
+  <div class="att-legend-item"><div class="att-dot" style="background:#059669;"></div> Excellent (&ge;80%)</div>
+  <div class="att-legend-item"><div class="att-dot" style="background:#0f766e;"></div> Good (&ge;60%)</div>
+  <div class="att-legend-item"><div class="att-dot" style="background:#d97706;"></div> Developing (&ge;40%)</div>
+  <div class="att-legend-item"><div class="att-dot" style="background:#dc2626;"></div> Needs Attention (&lt;40%)</div>
+  <div class="att-legend-item" style="margin-left:8px;"><span style="color:#9ca3af;font-size:12px;">✦ Archived course</span></div>
+</div>
+
+<div class="panel" style="margin-bottom:22px;">
+  <div class="panel-head" style="margin-bottom:14px;">
+    <div class="panel-title">&#128203; PLO Attainment — Semester Comparison</div>
+    <span style="font-size:12px;color:var(--gray);">% of present students who scored &ge;40% on each PLO &nbsp;·&nbsp; Attained = &ge;60%</span>
+  </div>
+  <div class="cmp-table-wrap">
+    <table class="cmp-table">
+      <thead>
+        <tr>
+          <th class="left" rowspan="2" style="min-width:120px;vertical-align:middle;background:#1e3a5f;">Semester</th>
+          <th class="left" rowspan="2" style="min-width:80px;vertical-align:middle;background:#1e3a5f;font-size:11px;">Students<br>Present</th>
+          <th colspan="{{ plo_codes|length }}" style="border-left:2px solid rgba(255,255,255,0.2);">Program Learning Outcomes (PLO Attainment %)</th>
+        </tr>
+        <tr>
+          {% for plo in plo_list %}
+          <th title="{{ plo.description }}" style="min-width:100px;{% if forloop.first %}border-left:2px solid rgba(255,255,255,.2);{% endif %}">{{ plo.code }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in table_rows %}
+        <tr>
+          <td class="left" style="color:#1e3a5f;">{{ row.semester }}{% if row.is_archived %}<span style="font-size:10px;color:#9ca3af;font-weight:400;"> ✦Archived</span>{% endif %}</td>
+          <td style="color:var(--gray);font-size:12px;">{{ row.present_count }}</td>
+          {% for cell in row.cells %}
+          <td>
+            {% if cell.has_data %}
+            <div class="att-cell">
+              <span class="att-pct" style="{% if cell.attainment >= 80 %}color:#059669;{% elif cell.attainment >= 60 %}color:#0f766e;{% elif cell.attainment >= 40 %}color:#d97706;{% else %}color:#dc2626;{% endif %}">{{ cell.attainment }}%</span>
+              <span class="att-badge {% if cell.attainment >= 80 %}att-exc{% elif cell.attainment >= 60 %}att-good{% elif cell.attainment >= 40 %}att-dev{% else %}att-need{% endif %}">
+                {% if cell.attainment >= 80 %}Excellent{% elif cell.attainment >= 60 %}Good{% elif cell.attainment >= 40 %}Developing{% else %}Needs Attn{% endif %}
+              </span>
+            </div>
+            {% else %}<span class="att-na">&mdash;</span>{% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="{{ plo_codes|length|add:2 }}" style="padding:8px 14px;font-size:11px;color:var(--gray);border-top:2px solid var(--border);font-style:italic;">
+            * Attainment = % of students present in the final exam who scored &ge;40% on the PLO. ✦ marks archived course instances.
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:22px;">
+  <div class="panel-head" style="margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <div class="panel-title">&#128200; PLO Attainment Chart</div>
+      <span style="font-size:12px;color:var(--gray);">Visual comparison of PLO attainment across semesters</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div class="chart-toggle" id="chartTypeToggle">
+        <button class="chart-btn active" data-type="bar" onclick="setChartType('bar',this)">Bar</button>
+        <button class="chart-btn" data-type="line" onclick="setChartType('line',this)">Line</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray);cursor:pointer;">
+        <input type="checkbox" id="showThreshold" checked onchange="toggleThreshold()"> Show 60% threshold
+      </label>
+    </div>
+  </div>
+  <div style="margin-bottom:14px;">
+    <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Filter semesters in chart</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;" id="chartSemPills">
+      {% for row in table_rows %}
+      <button type="button" class="sem-pill chart-sem-pill active" data-sem="{{ row.semester }}" onclick="toggleChartSem(this)" style="font-size:11px;padding:3px 11px;">{{ row.semester }}</button>
+      {% endfor %}
+      <div style="margin-left:4px;display:flex;gap:6px;">
+        <button type="button" onclick="selectAllChartSems()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;background:#f9fafb;cursor:pointer;color:var(--gray);">All</button>
+        <button type="button" onclick="clearAllChartSems()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;background:#f9fafb;cursor:pointer;color:var(--gray);">None</button>
+      </div>
+    </div>
+  </div>
+  <div style="position:relative;height:360px;"><canvas id="ploCompChart"></canvas></div>
+</div>
+
+{% if plo_list %}
+<div class="panel" style="margin-bottom:22px;">
+  <div class="panel-head" style="margin-bottom:12px;"><div class="panel-title">&#128218; PLO Reference</div></div>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:#f3f4f6;">
+      <th style="padding:8px 12px;text-align:left;border-bottom:2px solid var(--border);width:90px;">PLO</th>
+      <th style="padding:8px 12px;text-align:left;border-bottom:2px solid var(--border);">Description</th>
+    </tr></thead>
+    <tbody>
+      {% for plo in plo_list %}
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:8px 12px;font-weight:700;color:var(--indigo);">{{ plo.code }}</td>
+        <td style="padding:8px 12px;color:var(--gray);">{{ plo.description }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SELECTED_IDS = new Set([{% for id in selected_ids %}{{ id }},{% endfor %}]);
+function updateSemCount() {
+  const active = [...document.querySelectorAll('.sem-pill:not(.sem-pill-hidden)')].filter(p => !p.classList.contains('inactive'));
+  const total  = document.querySelectorAll('.sem-pill:not(.sem-pill-hidden)').length;
+  const el = document.getElementById('semCountLabel');
+  if (el) el.textContent = active.length + ' of ' + total + ' semester' + (total !== 1 ? 's' : '') + ' selected';
+}
+function toggleSemPill(btn) { btn.classList.toggle('inactive'); updateSemCount(); }
+function selectAllSems() { document.querySelectorAll('.sem-pill:not(.sem-pill-hidden)').forEach(p => p.classList.remove('inactive')); updateSemCount(); }
+function filterSemPills(q) {
+  const term = q.trim().toLowerCase();
+  document.querySelectorAll('.sem-pill').forEach(p => { p.classList.toggle('sem-pill-hidden', !(!term || p.dataset.sem.toLowerCase().includes(term))); });
+  updateSemCount();
+}
+document.getElementById('pcForm').addEventListener('submit', function () {
+  document.querySelectorAll('input[name="sem_ids"]').forEach(el => el.remove());
+  document.querySelectorAll('.sem-pill:not(.inactive)').forEach(p => {
+    const inp = document.createElement('input'); inp.type = 'hidden'; inp.name = 'sem_ids'; inp.value = p.dataset.id; this.appendChild(inp);
+  });
+});
+document.querySelectorAll('.sem-pill').forEach(p => { if (SELECTED_IDS.size > 0 && !SELECTED_IDS.has(parseInt(p.dataset.id))) p.classList.add('inactive'); });
+updateSemCount();
+
+{% if has_data %}
+const CHART_RAW = {{ chart_json|safe }};
+const PALETTE = ['#6366f1','#20b2aa','#ED7D31','#70AD47','#7030A0','#FFC000','#E74C3C','#00B050','#C00000','#993366','#1ABC9C','#8E44AD','#2980B9','#F39C12','#D35400'];
+let chartInst = null, currentType = 'bar', showThresholdLine = true, activeSems = new Set(CHART_RAW.semesters);
+function buildDatasets(type) {
+  return CHART_RAW.datasets.filter(d => activeSems.has(d.semester)).map((d, i) => {
+    const color = PALETTE[i % PALETTE.length];
+    return { label: d.semester, data: d.values, borderColor: color, backgroundColor: type === 'bar' ? color + 'cc' : color + '33', borderWidth: type === 'bar' ? 1 : 2.5, borderRadius: type === 'bar' ? 5 : 0, tension: 0.35, pointRadius: type === 'line' ? 5 : 0, pointHoverRadius: 7, pointBackgroundColor: color, fill: type === 'line', spanGaps: true };
+  });
+}
+function buildChart() {
+  const el = document.getElementById('ploCompChart'); if (!el) return;
+  if (chartInst) chartInst.destroy();
+  chartInst = new Chart(el, {
+    type: currentType,
+    data: { labels: CHART_RAW.plo_codes, datasets: buildDatasets(currentType) },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 13, font: { size: 11 }, padding: 10 } },
+        tooltip: { callbacks: {
+          title: ctx => 'PLO: ' + ctx[0].label,
+          label: ctx => { const v = ctx.raw; return ` ${ctx.dataset.label}: ${v !== null ? v.toFixed(1) + '%' : 'N/A'}`; },
+          afterLabel: ctx => { const v = ctx.raw; if (v === null) return ''; if (v >= 80) return '  ✦ Excellent'; if (v >= 60) return '  ✔ Good (Attained)'; if (v >= 40) return '  ▲ Developing'; return '  ✗ Needs Attention'; },
+        }},
+      },
+      scales: {
+        y: { min: 0, max: 100, ticks: { font: { size: 11 }, stepSize: 20, color: '#6b7280', callback: v => v + '%' }, grid: { color: '#e5e7eb' }, title: { display: true, text: 'Attainment (%)', font: { size: 11 }, color: '#6b7280' } },
+        x: { grid: { display: false }, ticks: { font: { size: 12, weight: '600' }, color: '#374151' }, title: { display: true, text: 'PLO', font: { size: 11 }, color: '#6b7280' } },
+      },
+    },
+  });
+}
+function setChartType(type, btn) { currentType = type; document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); buildChart(); }
+function toggleThreshold() { showThresholdLine = document.getElementById('showThreshold').checked; buildChart(); }
+function toggleChartSem(btn) { btn.classList.toggle('active'); btn.classList.toggle('inactive'); const sem = btn.dataset.sem; if (btn.classList.contains('active')) activeSems.add(sem); else activeSems.delete(sem); buildChart(); }
+function selectAllChartSems() { document.querySelectorAll('.chart-sem-pill').forEach(b => { b.classList.add('active'); b.classList.remove('inactive'); activeSems.add(b.dataset.sem); }); buildChart(); }
+function clearAllChartSems() { document.querySelectorAll('.chart-sem-pill').forEach(b => { b.classList.remove('active'); b.classList.add('inactive'); }); activeSems.clear(); buildChart(); }
+buildChart();
+{% endif %}
+</script>
+{% endblock %}

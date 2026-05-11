@@ -99,6 +99,13 @@ urlpatterns = [
     path('admin-portal/assessments/<int:assessment_id>/delete/', views.admin_delete_assessment, name='admin_delete_assessment'),
     path('admin-portal/submissions/', views.admin_submissions, name='admin_submissions'),
     path('admin-portal/escar/', views.admin_escar, name='admin_escar'),
+    path('admin-portal/analytics/', views.admin_analytics, name='admin_analytics'),
+    path('admin-portal/batch-analytics/', views.admin_batch_analytics, name='admin_batch_analytics'),
+    path('admin-portal/plo-comparison/', views.admin_plo_comparison, name='admin_plo_comparison'),
+    path('admin-portal/semester-plo-comparison/', views.admin_semester_plo_comparison, name='admin_semester_plo_comparison'),
+    path('admin-portal/students/', views.admin_students, name='admin_students'),
+    path('admin-portal/students/<int:student_id>/attainment/', views.admin_student_attainment, name='admin_student_attainment'),
+    path('admin-portal/marks-sheet/', views.admin_marks_sheet, name='admin_marks_sheet'),
 
 
 # DAO Portal
@@ -116,6 +123,9 @@ urlpatterns = [
     path('dao-portal/courses/<int:course_id>/delete/', views.dao_delete_course, name='dao_delete_course'),
     path('dao-portal/analytics/', views.dao_analytics, name='dao_analytics'),
     path('dao-portal/escar/', views.dao_escar, name='dao_escar'),
+    path('dao-portal/plo-comparison/', views.dao_plo_comparison, name='dao_plo_comparison'),
+    path('dao-portal/semester-plo-comparison/', views.dao_semester_plo_comparison, name='dao_semester_plo_comparison'),
+    path('dao-portal/marks-sheet/', views.dao_marks_sheet, name='dao_marks_sheet'),
     path('dao-portal/students/', views.dao_students, name='dao_students'),
     path('dao-portal/students/<int:student_id>/attainment/', views.dao_student_attainment, name='dao_student_attainment'),
     path('dao-portal/sections/', views.dao_sections, name='dao_sections'),
@@ -142,6 +152,9 @@ urlpatterns = [
     path('dept-head/courses/<int:course_id>/delete/', views.dept_head_delete_course, name='dept_head_delete_course'),
     path('dept-head/analytics/', views.dept_head_analytics, name='dept_head_analytics'),
     path('dept-head/escar/', views.dept_head_escar, name='dept_head_escar'),
+    path('dept-head/plo-comparison/', views.dept_head_plo_comparison, name='dept_head_plo_comparison'),
+    path('dept-head/semester-plo-comparison/', views.dept_head_semester_plo_comparison, name='dept_head_semester_plo_comparison'),
+    path('dept-head/marks-sheet/', views.dept_head_marks_sheet, name='dept_head_marks_sheet'),
     path('dept-head/students/', views.dept_head_students, name='dept_head_students'),
     path('dept-head/students/<int:student_id>/attainment/', views.dept_head_student_attainment, name='dept_head_student_attainment'),
     path('dept-head/sections/', views.dept_head_sections, name='dept_head_sections'),

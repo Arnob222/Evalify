@@ -1,0 +1,284 @@
+{% extends 'dao_portal/base.html' %}
+{% block nav_semester_plo_comparison %}active{% endblock %}
+
+{% block content %}
+<style>
+.spc-title{font-size:22px;font-weight:800;color:var(--text);}
+.spc-sub{font-size:13px;color:var(--gray);margin-bottom:22px;}
+.sem-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;max-width:900px;}
+.sem-pill{padding:4px 13px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--indigo);background:var(--indigo);color:#fff;transition:all .18s;}
+.sem-pill.inactive{background:#fff;color:var(--indigo);}
+.sem-pill-hidden{display:none !important;}
+.sem-search-wrap{position:relative;max-width:300px;}
+.sem-search-wrap input{width:100%;padding:7px 10px 7px 32px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box;}
+.sem-search-wrap input:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+.sem-search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;pointer-events:none;}
+.sem-suggestions{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.1);z-index:200;overflow:hidden;display:none;}
+.sem-sug-item{padding:8px 14px;font-size:13px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:space-between;transition:background .12s;}
+.sem-sug-item:hover{background:#f0f9ff;}
+.att-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;align-items:center;}
+.att-legend-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray);}
+.att-dot{width:10px;height:10px;border-radius:50%;}
+.cmp-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px;border:1px solid var(--border);}
+.cmp-table{width:100%;border-collapse:collapse;font-size:13px;min-width:500px;}
+.cmp-table thead tr:first-child{background:#1e3a5f;color:#fff;}
+.cmp-table thead tr:last-child{background:#2d5f8a;color:#fff;font-size:11px;}
+.cmp-table th{padding:9px 14px;font-weight:700;text-align:center;white-space:nowrap;}
+.cmp-table th.left{text-align:left;}
+.cmp-table td{padding:9px 14px;text-align:center;border-bottom:1px solid var(--border);vertical-align:middle;}
+.cmp-table td.left{text-align:left;font-weight:700;white-space:nowrap;}
+.cmp-table tbody tr:last-child td{border-bottom:none;}
+.cmp-table tbody tr:nth-child(odd){background:#fafafa;}
+.cmp-table tbody tr:hover{background:#f0f9ff;}
+.att-cell{display:inline-flex;flex-direction:column;align-items:center;gap:2px;}
+.att-pct{font-size:14px;font-weight:800;}
+.att-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap;}
+.att-exc{background:#d1fae5;color:#065f46;}
+.att-good{background:#ccfbf1;color:#0f766e;}
+.att-dev{background:#fef3c7;color:#92400e;}
+.att-need{background:#fee2e2;color:#991b1b;}
+.att-na{color:#d1d5db;font-size:13px;}
+.spc-empty{text-align:center;padding:60px 20px;}
+.spc-empty-icon{font-size:48px;margin-bottom:12px;}
+.spc-empty-title{font-size:17px;font-weight:700;margin-bottom:6px;}
+</style>
+
+<div style="margin-bottom:6px;">
+  <div class="spc-title">PLO Attainment — Semester Comparison</div>
+  <div class="spc-sub">Compare Program Learning Outcome attainment across all semesters system-wide, aggregating class-level attainment for every course.</div>
+</div>
+
+<form method="get" id="spcForm">
+<div class="panel" style="margin-bottom:20px;padding:18px 20px;">
+  <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">Filter Semesters</div>
+  <div class="sem-search-wrap">
+    <span class="sem-search-icon">&#128269;</span>
+    <input type="text" id="semSearchBox" placeholder="Search… e.g. 2024, Fall, Spring 2025" autocomplete="off" oninput="onSemSearch(this.value)" onfocus="onSemSearch(this.value)" onblur="setTimeout(hideSuggestions, 180)">
+    <div class="sem-suggestions" id="semSuggestions"></div>
+  </div>
+  <div class="sem-pills" id="semPillBox">
+    {% for sem in all_semesters %}
+    <button type="button" class="sem-pill {% if sem not in selected_sems %}inactive{% endif %}" data-sem="{{ sem }}" onclick="toggleSemPill(this)">{{ sem }}</button>
+    {% endfor %}
+  </div>
+  <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;">
+    <span id="semSelCount" style="font-size:12px;color:var(--gray);min-width:100px;"></span>
+    <button type="button" onclick="selectVisibleSems()" style="padding:5px 12px;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;background:#f9fafb;color:var(--gray);">Select Visible</button>
+    <button type="button" onclick="selectAllSems()" style="padding:5px 12px;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;background:#f9fafb;color:var(--gray);">Select All</button>
+    <button type="button" onclick="clearAllSems()" style="padding:5px 12px;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;background:#f9fafb;color:var(--gray);">Clear All</button>
+    <button type="submit" class="btn btn-primary" style="padding:6px 18px;">Apply</button>
+  </div>
+</div>
+</form>
+
+{% if not all_semesters %}
+<div class="panel spc-empty">
+  <div class="spc-empty-icon">&#128218;</div>
+  <div class="spc-empty-title">No Courses Found</div>
+  <div style="font-size:13px;color:var(--gray);">No courses exist in the system yet.</div>
+</div>
+{% elif not has_data %}
+<div class="panel spc-empty">
+  <div class="spc-empty-icon">&#128202;</div>
+  <div class="spc-empty-title">No PLO Data Available</div>
+  <div style="font-size:13px;color:var(--gray);">The selected semesters have no published assessments with PLO mappings, or no students have been graded yet.</div>
+</div>
+{% else %}
+
+<div class="att-legend" style="margin-bottom:14px;">
+  <span style="font-size:12px;font-weight:600;color:var(--gray);">Attainment key:</span>
+  <div class="att-legend-item"><div class="att-dot" style="background:#059669;"></div> Excellent (&ge;80%)</div>
+  <div class="att-legend-item"><div class="att-dot" style="background:#0f766e;"></div> Good (&ge;60%)</div>
+  <div class="att-legend-item"><div class="att-dot" style="background:#d97706;"></div> Developing (&ge;40%)</div>
+  <div class="att-legend-item"><div class="att-dot" style="background:#dc2626;"></div> Needs Attention (&lt;40%)</div>
+</div>
+
+<div class="panel" style="margin-bottom:22px;">
+  <div class="panel-head" style="margin-bottom:14px;">
+    <div class="panel-title">&#128203; PLO Attainment by Semester</div>
+    <span style="font-size:12px;color:var(--gray);">% of present students who scored &ge;40% on each PLO &nbsp;·&nbsp; Attained = &ge;60%</span>
+  </div>
+  <div class="cmp-table-wrap">
+    <table class="cmp-table">
+      <thead>
+        <tr>
+          <th class="left" rowspan="2" style="min-width:130px;vertical-align:middle;background:#1e3a5f;">Semester</th>
+          <th rowspan="2" style="min-width:80px;vertical-align:middle;background:#1e3a5f;font-size:11px;font-weight:400;">Students<br>Present</th>
+          <th colspan="{{ plo_codes|length }}" style="border-left:2px solid rgba(255,255,255,0.2);">Program Learning Outcomes — Attainment (%)</th>
+        </tr>
+        <tr>
+          {% for plo in plo_list %}
+          <th title="{{ plo.description }}" style="min-width:100px;{% if forloop.first %}border-left:2px solid rgba(255,255,255,.2);{% endif %}">{{ plo.code }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in table_rows %}
+        <tr>
+          <td class="left" style="color:#1e3a5f;">{{ row.semester }}</td>
+          <td style="color:var(--gray);font-size:12px;">{{ row.present_count }}</td>
+          {% for cell in row.cells %}
+          <td>
+            {% if cell.has_data %}
+            <div class="att-cell">
+              <span class="att-pct" style="{% if cell.attainment >= 80 %}color:#059669;{% elif cell.attainment >= 60 %}color:#0f766e;{% elif cell.attainment >= 40 %}color:#d97706;{% else %}color:#dc2626;{% endif %}">{{ cell.attainment }}%</span>
+              <span class="att-badge {% if cell.attainment >= 80 %}att-exc{% elif cell.attainment >= 60 %}att-good{% elif cell.attainment >= 40 %}att-dev{% else %}att-need{% endif %}">
+                {% if cell.attainment >= 80 %}Excellent{% elif cell.attainment >= 60 %}Good{% elif cell.attainment >= 40 %}Developing{% else %}Needs Attn{% endif %}
+              </span>
+            </div>
+            {% else %}<span class="att-na">&mdash;</span>{% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="{{ plo_codes|length|add:2 }}" style="padding:8px 14px;font-size:11px;color:var(--gray);border-top:2px solid var(--border);font-style:italic;">
+            * Attainment = % of present students who scored &ge;40% on the PLO, aggregated across all courses in each semester.
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:22px;">
+  <div class="panel-head" style="margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <div class="panel-title">&#128202; PLO Attainment — Semester Comparison Chart</div>
+      <span style="font-size:12px;color:var(--gray);">Each group of bars = one PLO &nbsp;·&nbsp; Each colour = one semester</span>
+    </div>
+    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray);cursor:pointer;">
+      <input type="checkbox" id="showThreshold" checked onchange="buildChart()"> Show 60% threshold
+    </label>
+  </div>
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Filter semesters in chart</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;" id="chartSemPills">
+      {% for row in table_rows %}
+      <button type="button" class="sem-pill chart-sem-pill active" data-sem="{{ row.semester }}" onclick="toggleChartSem(this)" style="font-size:11px;padding:3px 11px;">{{ row.semester }}</button>
+      {% endfor %}
+      <div style="margin-left:4px;display:flex;gap:6px;">
+        <button type="button" onclick="selectAllSems2()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;background:#f9fafb;cursor:pointer;color:var(--gray);">All</button>
+        <button type="button" onclick="clearAllSems2()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;background:#f9fafb;cursor:pointer;color:var(--gray);">None</button>
+      </div>
+    </div>
+  </div>
+  <div style="position:relative;height:420px;"><canvas id="ploTrendChart"></canvas></div>
+</div>
+
+{% if plo_list %}
+<div class="panel" style="margin-bottom:22px;">
+  <div class="panel-head" style="margin-bottom:12px;"><div class="panel-title">&#128218; PLO Reference</div></div>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:#f3f4f6;">
+      <th style="padding:8px 12px;text-align:left;border-bottom:2px solid var(--border);width:90px;">PLO</th>
+      <th style="padding:8px 12px;text-align:left;border-bottom:2px solid var(--border);">Description</th>
+    </tr></thead>
+    <tbody>
+      {% for plo in plo_list %}
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:8px 12px;font-weight:700;color:var(--indigo);">{{ plo.code }}</td>
+        <td style="padding:8px 12px;color:var(--gray);">{{ plo.description }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALL_SEMS = [{% for sem in all_semesters %}"{{ sem }}",{% endfor %}];
+function getPills() { return document.querySelectorAll('#semPillBox .sem-pill'); }
+function updateSelCount() {
+  const visible = [...getPills()].filter(p => !p.classList.contains('sem-pill-hidden'));
+  const selected = visible.filter(p => !p.classList.contains('inactive'));
+  const el = document.getElementById('semSelCount');
+  if (el) el.textContent = selected.length + ' of ' + visible.length + ' selected';
+}
+function toggleSemPill(btn) { btn.classList.toggle('inactive'); updateSelCount(); }
+function selectVisibleSems() { getPills().forEach(p => { if (!p.classList.contains('sem-pill-hidden')) p.classList.remove('inactive'); }); updateSelCount(); }
+function selectAllSems() { getPills().forEach(p => { p.classList.remove('inactive', 'sem-pill-hidden'); }); document.getElementById('semSearchBox').value = ''; renderSuggestions(''); updateSelCount(); }
+function clearAllSems() { getPills().forEach(p => p.classList.add('inactive')); updateSelCount(); }
+function onSemSearch(q) {
+  const term = q.trim().toLowerCase();
+  getPills().forEach(p => { p.classList.toggle('sem-pill-hidden', !(!term || p.dataset.sem.toLowerCase().includes(term))); });
+  renderSuggestions(term); updateSelCount();
+}
+function renderSuggestions(term) {
+  const box = document.getElementById('semSuggestions');
+  if (!term) { box.style.display = 'none'; return; }
+  const matches = ALL_SEMS.filter(s => s.toLowerCase().includes(term));
+  if (!matches.length) { box.style.display = 'none'; return; }
+  box.innerHTML = matches.map(s => {
+    const isActive = ![...getPills()].find(p => p.dataset.sem === s)?.classList.contains('inactive');
+    return `<div class="sem-sug-item" onmousedown="pickSuggestion('${s}')"><span>${s}</span>${isActive ? '<span style="color:var(--indigo);font-size:12px;">✔ selected</span>' : ''}</div>`;
+  }).join('');
+  box.style.display = 'block';
+}
+function pickSuggestion(sem) {
+  const pill = [...getPills()].find(p => p.dataset.sem === sem);
+  if (pill) { pill.classList.remove('inactive', 'sem-pill-hidden'); }
+  document.getElementById('semSearchBox').value = '';
+  getPills().forEach(p => p.classList.remove('sem-pill-hidden'));
+  hideSuggestions(); updateSelCount();
+}
+function hideSuggestions() { document.getElementById('semSuggestions').style.display = 'none'; }
+document.getElementById('spcForm').addEventListener('submit', function () {
+  document.querySelectorAll('input[name="sems"]').forEach(el => el.remove());
+  getPills().forEach(p => { if (!p.classList.contains('inactive')) { const inp = document.createElement('input'); inp.type = 'hidden'; inp.name = 'sems'; inp.value = p.dataset.sem; this.appendChild(inp); } });
+});
+updateSelCount();
+
+{% if has_data %}
+const CHART_RAW = {{ chart_json|safe }};
+const SEM_MAP = {};
+CHART_RAW.semesters.forEach((sem, si) => { SEM_MAP[sem] = {}; CHART_RAW.datasets.forEach(d => { SEM_MAP[sem][d.plo] = d.values[si]; }); });
+const PALETTE = ['#6366f1','#20b2aa','#ED7D31','#70AD47','#7030A0','#FFC000','#E74C3C','#00B050','#C00000','#993366','#1ABC9C','#8E44AD','#2980B9','#F39C12','#D35400'];
+let chartInst = null, activeSems = new Set(CHART_RAW.semesters);
+function buildBarDatasets(labels) {
+  const ds = [];
+  [...activeSems].forEach((sem, i) => {
+    const color = PALETTE[i % PALETTE.length];
+    ds.push({ type: 'bar', label: sem, data: labels.map(plo => { const v = SEM_MAP[sem]?.[plo]; return (v != null) ? v : null; }), backgroundColor: color + 'cc', borderColor: color, borderWidth: 1.5, borderRadius: 5, borderSkipped: false, hoverBackgroundColor: color });
+  });
+  if (document.getElementById('showThreshold').checked) {
+    ds.push({ type: 'line', label: '60% Threshold', data: labels.map(() => 60), borderColor: '#ef4444', borderWidth: 2, borderDash: [7, 4], pointRadius: 0, pointHoverRadius: 0, fill: false, tension: 0, order: -1 });
+  }
+  return ds;
+}
+function buildChart() {
+  const el = document.getElementById('ploTrendChart'); if (!el) return;
+  if (chartInst) chartInst.destroy();
+  const labels = CHART_RAW.plo_codes;
+  chartInst = new Chart(el, {
+    type: 'bar', data: { labels, datasets: buildBarDatasets(labels) },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12 }, padding: 14, filter: item => item.text !== '60% Threshold' } },
+        tooltip: { callbacks: {
+          title: ctx => 'PLO: ' + ctx[0].label,
+          label: ctx => { if (ctx.dataset.label === '60% Threshold') return null; const v = ctx.raw; const badge = v == null ? 'N/A' : v >= 80 ? '✦ Excellent' : v >= 60 ? '✔ Attained' : v >= 40 ? '▲ Developing' : '✗ Needs Attention'; return ` ${ctx.dataset.label}: ${v != null ? v.toFixed(1) + '%' : 'N/A'}  ${badge}`; },
+          filter: item => item.dataset.label !== '60% Threshold',
+        }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 8 },
+      },
+      scales: {
+        y: { min: 0, max: 105, ticks: { stepSize: 20, color: '#6b7280', font: { size: 11 }, callback: v => v <= 100 ? v + '%' : '' }, grid: { color: '#e5e7eb' }, title: { display: true, text: 'Attainment (%)', font: { size: 11 }, color: '#6b7280' }, border: { display: false } },
+        x: { grid: { display: false }, ticks: { font: { size: 12, weight: '700' }, color: '#1e3a5f' }, title: { display: true, text: 'Program Learning Outcome', font: { size: 11 }, color: '#6b7280' }, border: { display: false } },
+      },
+    },
+  });
+}
+function toggleChartSem(btn) { btn.classList.toggle('active'); btn.classList.toggle('inactive'); const sem = btn.dataset.sem; if (btn.classList.contains('active')) activeSems.add(sem); else activeSems.delete(sem); buildChart(); }
+function selectAllSems2() { document.querySelectorAll('.chart-sem-pill').forEach(b => { b.classList.add('active'); b.classList.remove('inactive'); activeSems.add(b.dataset.sem); }); buildChart(); }
+function clearAllSems2() { document.querySelectorAll('.chart-sem-pill').forEach(b => { b.classList.remove('active'); b.classList.add('inactive'); }); activeSems.clear(); buildChart(); }
+buildChart();
+{% endif %}
+</script>
+{% endblock %}

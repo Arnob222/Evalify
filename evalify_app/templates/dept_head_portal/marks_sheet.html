@@ -1,0 +1,335 @@
+{% extends 'dept_head_portal/base.html' %}
+{% block nav_marks_sheet %}active{% endblock %}
+
+{% block content %}
+<style>
+.ms-th {
+  background: var(--sidebar);
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  padding: 7px 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  white-space: nowrap;
+}
+.ms-td {
+  border: 1px solid #e5e7eb;
+  padding: 4px 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+.ms-td-name {
+  border: 1px solid #e5e7eb;
+  padding: 4px 8px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.hd-group { background:#ffc000; color:#000; font-weight:700; text-align:center; padding:6px 4px; border:1px solid #e0a800; }
+.hd-q     { background:#ffd966; color:#7f6000; font-weight:700; text-align:center; padding:5px 6px; border:1px solid #e5e7eb; min-width:54px; }
+.hd-clo   { background:#fff2cc; color:#7f6000; text-align:center; padding:4px; border:1px solid #e5e7eb; font-size:11px; }
+.hd-max   { background:#f3f4f6; font-weight:700; text-align:center; padding:5px; border:1px solid #e5e7eb; color:var(--violet); }
+.hd-att   { background:#70ad47; color:#fff; font-weight:700; text-align:center; padding:6px; border:1px solid #5a9132; }
+.hd-att-sub { background:#a9d18e; color:#375623; font-weight:700; text-align:center; padding:5px 6px; border:1px solid #e5e7eb; min-width:52px; }
+.att-yes { color: #166534; font-weight: 700; }
+.att-no  { color: #991b1b; font-weight: 700; }
+.even-row { background: #fafafa; }
+.odd-row  { background: #fff; }
+.readonly-badge {
+  display:inline-flex; align-items:center; gap:6px;
+  background:#fef3c7; color:#92400e; border:1px solid #fcd34d;
+  padding:5px 12px; border-radius:6px; font-size:12px; font-weight:600;
+}
+.filter-label { font-size:11px; font-weight:600; color:var(--gray); text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; display:block; }
+</style>
+
+<div class="page-header">
+  <div>
+    <div class="page-title">Marks Sheet</div>
+    <div class="page-sub">Read-only view — marks can only be entered or edited by Faculty.</div>
+  </div>
+  <span class="readonly-badge">&#128274; Read Only</span>
+</div>
+
+<!-- Filter bar -->
+<form method="get" id="filterForm">
+  <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:24px;">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+
+      <!-- Semester -->
+      <div>
+        <span class="filter-label">Semester</span>
+        <select name="semester" class="form-control" style="width:180px;" onchange="onSemesterChange(this)">
+          <option value="">— All Semesters —</option>
+          {% for sem in all_semesters %}
+          <option value="{{ sem }}" {% if sem == selected_semester %}selected{% endif %}>{{ sem }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Section -->
+      <div>
+        <span class="filter-label">Section
+          {% if selected_section %}
+          <span style="color:var(--violet);font-weight:700;">(filtered)</span>
+          {% endif %}
+        </span>
+        <select name="section" class="form-control" style="width:260px;" onchange="onSectionChange(this)">
+          <option value="">— All Students —</option>
+          {% for sec in all_sections %}
+          <option value="{{ sec.id }}"
+            data-course="{{ sec.course.id }}"
+            {% if selected_section and selected_section.id == sec.id %}selected{% endif %}>
+            {{ sec.course.code }} · Sec {{ sec.name }} · {{ sec.batch }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Course -->
+      <div style="flex:1;min-width:200px;">
+        <span class="filter-label">Course</span>
+        <select name="course" id="courseSelect" class="form-control" style="width:100%;max-width:360px;" onchange="document.getElementById('filterForm').submit()">
+          {% for c in courses %}
+          <option value="{{ c.id }}" {% if selected_course and selected_course.id == c.id %}selected{% endif %}>
+            {{ c.code }}: {{ c.name }} ({{ c.semester }})
+          </option>
+          {% empty %}
+          <option disabled>No courses match</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        {% if selected_semester or selected_section %}
+        <a href="{% url 'dept_head_marks_sheet' %}" class="btn btn-outline btn-sm" style="margin-top:4px;">Clear</a>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if selected_section %}
+    <div style="margin-top:10px;font-size:12px;color:var(--violet);font-weight:600;">
+      &#128203; Showing students in Section {{ selected_section.name }} · {{ selected_section.batch }}
+      ({{ selected_course.code }}: {{ selected_course.name }})
+    </div>
+    {% elif selected_course %}
+    <div style="margin-top:10px;font-size:12px;color:var(--gray);">
+      Showing all enrolled students for <strong>{{ selected_course.code }}: {{ selected_course.name }}</strong>
+      {% if selected_semester %}&nbsp;·&nbsp;{{ selected_semester }}{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</form>
+
+{% if not selected_course %}
+<div class="empty-state">
+  <div class="empty-icon">&#128202;</div>
+  <div class="empty-title">No courses found</div>
+  <div class="empty-sub">No courses are available{% if selected_semester %} for {{ selected_semester }}{% endif %}.</div>
+</div>
+
+{% elif not assessment_groups %}
+<div class="empty-state">
+  <div class="empty-icon">&#128203;</div>
+  <div class="empty-title">No published assessments</div>
+  <div class="empty-sub">{{ selected_course.code }} has no published assessments with questions yet.</div>
+</div>
+
+{% else %}
+
+<!-- ══════════════════════════════════════════════════════
+     TABLE 1 — MARKS MATRIX (read-only)
+══════════════════════════════════════════════════════ -->
+<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px 18px;margin-bottom:28px;">
+  <div style="overflow-x:auto;">
+  <table style="border-collapse:collapse;font-size:12px;white-space:nowrap;">
+    <thead>
+    <tr>
+      <td colspan="99"
+          style="text-align:center;font-size:14px;font-weight:700;background:#fef9c3;
+                 padding:8px 12px;border:1px solid #e5e7eb;">
+        Marks &mdash; {{ selected_course.code }}: {{ selected_course.name }}
+        {% if selected_section %}&nbsp;|&nbsp; Section {{ selected_section.name }} · {{ selected_section.batch }}{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th class="ms-th" rowspan="4" style="min-width:34px;">SL</th>
+      <th class="ms-th" rowspan="4" style="min-width:100px;">ID</th>
+      <th class="ms-th" rowspan="4" style="min-width:130px;text-align:left;padding-left:10px;">Name</th>
+      {% for g in assessment_groups %}
+      <th class="hd-group" colspan="{{ g.col_count }}">
+        {{ g.assessment.title }} ({{ g.assessment.total_marks }})
+      </th>
+      {% endfor %}
+      <th class="ms-th" rowspan="4" style="min-width:54px;">Total</th>
+    </tr>
+    <tr>
+      {% for col in all_columns %}
+      <th class="hd-q">{{ col.label }}</th>
+      {% endfor %}
+    </tr>
+    <tr>
+      {% for col in all_columns %}
+      <td class="hd-clo">{% if col.clo_codes %}{{ col.clo_codes|join:", " }}{% else %}&mdash;{% endif %}</td>
+      {% endfor %}
+    </tr>
+    <tr>
+      {% for col in all_columns %}
+      <td class="hd-clo">{% if col.plo_codes %}{{ col.plo_codes|join:", " }}{% else %}&mdash;{% endif %}</td>
+      {% endfor %}
+    </tr>
+    <tr>
+      <td class="hd-max" colspan="3" style="text-align:center;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">
+        Distribution of Marks
+      </td>
+      {% for col in all_columns %}
+      <td class="hd-max">{{ col.max_marks }}</td>
+      {% endfor %}
+      <td class="hd-max" style="color:var(--violet);">{{ total_max }}</td>
+    </tr>
+    </thead>
+
+    <tbody>
+    {% if rows %}
+      {% for row in rows %}
+      <tr class="{% cycle 'odd-row' 'even-row' %}">
+        <td class="ms-td" style="color:var(--gray);">{{ row.sl }}</td>
+        <td class="ms-td" style="font-size:11px;">{{ row.student.username }}</td>
+        <td class="ms-td-name">{{ row.student.full_name|default:row.student.username }}</td>
+        {% for cell in row.cells %}
+        <td class="ms-td">
+          {% if cell.value is not None %}{{ cell.value|floatformat:2 }}{% else %}&mdash;{% endif %}
+        </td>
+        {% endfor %}
+        <td class="ms-td" style="font-weight:700;color:var(--violet);">{{ row.total|floatformat:2 }}</td>
+      </tr>
+      {% endfor %}
+    {% else %}
+      <tr><td colspan="99" class="ms-td" style="padding:32px;color:var(--light);">No students found{% if selected_section %} in this section{% endif %}.</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════
+     TABLE 2 — CLO / PLO ATTAINMENT (read-only)
+══════════════════════════════════════════════════════ -->
+<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px 18px;">
+
+{% if not clos and not plos %}
+<div class="empty-state" style="padding:20px;">
+  <div class="empty-icon" style="font-size:28px;">&#127919;</div>
+  <div class="empty-title">No CLOs or PLOs mapped</div>
+  <div class="empty-sub">Tag questions with CLOs/PLOs when creating assessments.</div>
+</div>
+{% else %}
+
+  <div style="overflow-x:auto;">
+  <table style="border-collapse:collapse;font-size:12px;white-space:nowrap;">
+    <thead>
+    <tr>
+      <td colspan="{{ t2_colspan }}"
+          style="text-align:center;font-size:14px;font-weight:700;background:#fef9c3;
+                 padding:8px 12px;border:1px solid #e5e7eb;">
+        Individual Student CLO-PLO Attainment &mdash; {{ selected_course.code }}: {{ selected_course.name }}
+        {% if selected_section %}&nbsp;|&nbsp; Section {{ selected_section.name }} · {{ selected_section.batch }}{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th class="ms-th" rowspan="3" style="min-width:100px;">ID</th>
+      <th class="ms-th" rowspan="3" style="min-width:130px;text-align:left;padding-left:10px;">Name</th>
+      {% if clos %}<th class="hd-group" colspan="{{ clos|length }}">Raw Marks of CLOs</th>{% endif %}
+      {% if plos %}<th class="hd-group" colspan="{{ plos|length }}">Raw Marks of PLOs</th>{% endif %}
+      {% if clos %}<th class="hd-group" colspan="{{ clos|length }}">% Marks of CLOs</th>{% endif %}
+      {% if plos %}<th class="hd-group" colspan="{{ plos|length }}">% Marks of PLOs</th>{% endif %}
+      {% if clos %}<th class="hd-att"   colspan="{{ clos|length }}">Attainment of CLOs</th>{% endif %}
+      {% if plos %}<th class="hd-att"   colspan="{{ plos|length }}">Attainment of PLOs</th>{% endif %}
+    </tr>
+    <tr>
+      {% for item in clo_max_list %}<th class="hd-q">{{ item.clo.code }}</th>{% endfor %}
+      {% for item in plo_max_list %}<th class="hd-q">{{ item.plo.code }}</th>{% endfor %}
+      {% for item in clo_max_list %}<th class="hd-q">{{ item.clo.code }}</th>{% endfor %}
+      {% for item in plo_max_list %}<th class="hd-q">{{ item.plo.code }}</th>{% endfor %}
+      {% for item in clo_max_list %}<th class="hd-att-sub">{{ item.clo.code }}</th>{% endfor %}
+      {% for item in plo_max_list %}<th class="hd-att-sub">{{ item.plo.code }}</th>{% endfor %}
+    </tr>
+    <tr>
+      {% for item in clo_max_list %}
+      <td class="hd-clo" style="font-weight:700;color:var(--violet);">{{ item.max }}</td>
+      {% endfor %}
+      {% for item in plo_max_list %}
+      <td class="hd-clo" style="font-weight:700;color:var(--violet);">{{ item.max }}</td>
+      {% endfor %}
+      {% for item in clo_max_list %}
+      <td class="hd-clo" style="font-weight:600;color:var(--gray);">100.00</td>
+      {% endfor %}
+      {% for item in plo_max_list %}
+      <td class="hd-clo" style="font-weight:600;color:var(--gray);">100.00</td>
+      {% endfor %}
+      {% for item in clo_max_list %}
+      <td style="background:#e2efda;text-align:center;font-size:10px;padding:5px;border:1px solid #e5e7eb;color:var(--gray);">&ge;40%=Yes</td>
+      {% endfor %}
+      {% for item in plo_max_list %}
+      <td style="background:#e2efda;text-align:center;font-size:10px;padding:5px;border:1px solid #e5e7eb;color:var(--gray);">&ge;40%=Yes</td>
+      {% endfor %}
+    </tr>
+    </thead>
+
+    <tbody>
+    {% if rows %}
+      {% for row in rows %}
+      <tr class="{% cycle 'odd-row' 'even-row' %}">
+        <td class="ms-td" style="font-size:11px;">{{ row.student.username }}</td>
+        <td class="ms-td-name">{{ row.student.full_name|default:row.student.username }}</td>
+        {% for cc in row.clo_cells %}
+        <td class="ms-td">{{ cc.raw|floatformat:2 }}</td>
+        {% endfor %}
+        {% for pc in row.plo_cells %}
+        <td class="ms-td">{{ pc.raw|floatformat:2 }}</td>
+        {% endfor %}
+        {% for cc in row.clo_cells %}
+        <td class="ms-td">{% if cc.pct is not None %}{{ cc.pct }}{% else %}&mdash;{% endif %}</td>
+        {% endfor %}
+        {% for pc in row.plo_cells %}
+        <td class="ms-td">{% if pc.pct is not None %}{{ pc.pct }}{% else %}&mdash;{% endif %}</td>
+        {% endfor %}
+        {% for cc in row.clo_cells %}
+        <td class="ms-td {% if cc.att == 'Yes' %}att-yes{% elif cc.att == 'No' %}att-no{% endif %}">{{ cc.att }}</td>
+        {% endfor %}
+        {% for pc in row.plo_cells %}
+        <td class="ms-td {% if pc.att == 'Yes' %}att-yes{% elif pc.att == 'No' %}att-no{% endif %}">{{ pc.att }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    {% else %}
+      <tr><td colspan="{{ t2_colspan }}" class="ms-td" style="padding:32px;color:var(--light);">No students found{% if selected_section %} in this section{% endif %}.</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+  </div>
+
+  <div style="margin-top:10px;font-size:12px;color:var(--gray);">
+    &#127919; Attainment threshold: <strong>40%</strong> &nbsp;&middot;&nbsp;
+    <strong class="att-yes">Yes</strong> = at or above &nbsp;&middot;&nbsp;
+    <strong class="att-no">No</strong> = below.
+  </div>
+{% endif %}
+</div>
+
+{% endif %}{# end selected_course / assessment_groups #}
+
+<script>
+function onSemesterChange(sel) {
+  document.querySelector('[name="section"]').value = '';
+  document.getElementById('filterForm').submit();
+}
+function onSectionChange(sel) {
+  const courseId = sel.options[sel.selectedIndex].dataset.course;
+  if (courseId) {
+    document.getElementById('courseSelect').value = courseId;
+  }
+  document.getElementById('filterForm').submit();
+}
+</script>
+{% endblock %}
