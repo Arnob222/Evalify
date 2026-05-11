@@ -1,0 +1,415 @@
+{% extends 'faculty/base.html' %}
+{% block nav_plo_track %}active{% endblock %}
+
+{% block content %}
+<style>
+.fpt-card{background:#fff;border-radius:14px;border:1px solid var(--border);padding:24px;margin-bottom:22px;}
+.student-row{border:1px solid var(--border);border-radius:12px;padding:18px 20px;
+             margin-bottom:12px;background:#fff;}
+.student-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.stu-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#2563eb);
+            display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;
+            font-weight:800;flex-shrink:0;}
+.plo-mini-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.plo-mini-row:last-child{margin-bottom:0;}
+.plo-mini-code{font-size:11px;font-weight:700;width:46px;flex-shrink:0;}
+.plo-mini-track{flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;}
+.plo-mini-fill{height:100%;border-radius:4px;transition:width .7s ease;}
+.plo-mini-pct{font-size:12px;font-weight:700;width:40px;text-align:right;flex-shrink:0;}
+.weak-pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;
+           background:#fee2e2;color:#991b1b;}
+.btn-notify{padding:6px 12px;border-radius:7px;border:none;font-size:12px;font-weight:600;
+            cursor:pointer;transition:all .15s;font-family:inherit;}
+.btn-notify-feedback{background:#dbeafe;color:#1d4ed8;}
+.btn-notify-feedback:hover{background:#bfdbfe;}
+.btn-notify-alert{background:#fee2e2;color:#991b1b;}
+.btn-notify-alert:hover{background:#fecaca;}
+.course-select-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px;align-items:center;}
+.cs-btn{padding:7px 18px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;
+        border:1.5px solid var(--teal);transition:all .18s;text-decoration:none;
+        background:#fff;color:var(--teal);}
+.cs-btn.active{background:var(--teal);color:#fff;}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;
+              margin-bottom:22px;}
+.summary-stat{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+.summary-val{font-size:22px;font-weight:800;margin-bottom:2px;}
+.summary-lbl{font-size:11px;color:var(--gray);}
+.filter-search{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;
+               outline:none;font-family:inherit;width:250px;}
+.filter-search:focus{border-color:var(--teal);}
+</style>
+
+<div class="page-title">PLO Track</div>
+<div class="page-sub">Monitor student-wise PLO attainment for your courses and send improvement feedback.</div>
+
+<!-- Course Selector -->
+{% if courses %}
+<div class="course-select-bar">
+  <span style="font-size:13px;font-weight:600;color:var(--gray);">Course:</span>
+  {% for c in courses %}
+  <a href="?course_id={{ c.id }}"
+     class="cs-btn {% if selected_course and selected_course.id == c.id %}active{% endif %}">
+    {{ c.code }}
+    <span style="font-weight:400;font-size:11px;"> {{ c.semester }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not selected_course %}
+<div style="text-align:center;padding:80px 20px;">
+  <div style="font-size:48px;margin-bottom:14px;">📚</div>
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px;">No Active Courses</div>
+  <div style="font-size:13px;color:var(--gray);">You currently have no active courses assigned.</div>
+</div>
+
+{% elif not student_plo_data %}
+<div style="text-align:center;padding:80px 20px;">
+  <div style="font-size:48px;margin-bottom:14px;">👥</div>
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px;">No Students Yet</div>
+  <div style="font-size:13px;color:var(--gray);">No students are enrolled in {{ selected_course.code }} yet.</div>
+</div>
+
+{% else %}
+
+<!-- Summary Stats -->
+{% with total=student_plo_data|length %}
+<div class="summary-grid">
+  <div class="summary-stat">
+    <div class="summary-val" style="color:#3b82f6;">{{ total }}</div>
+    <div class="summary-lbl">Enrolled Students</div>
+  </div>
+  <div class="summary-stat">
+    <div class="summary-val" style="color:#10b981;">{{ plos|length }}</div>
+    <div class="summary-lbl">PLOs Tracked</div>
+  </div>
+  <div class="summary-stat">
+    <div class="summary-val" style="color:#ef4444;" id="weakCount">—</div>
+    <div class="summary-lbl">Students with Weak PLOs</div>
+  </div>
+</div>
+{% endwith %}
+
+<!-- PLO Chart (class average) -->
+{% if plos %}
+<div class="fpt-card" style="margin-bottom:22px;">
+  <div style="font-size:15px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+    <span style="font-size:20px;">📊</span> Class Average PLO Attainment — {{ selected_course.code }}
+  </div>
+  <div style="position:relative;height:240px;">
+    <canvas id="classAvgChart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- Search + Filter -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+  <input type="text" class="filter-search" id="stuSearch"
+         placeholder="Search student name or ID..."
+         oninput="filterStudents(this.value)">
+  <select id="weakFilter" onchange="filterStudents(document.getElementById('stuSearch').value)"
+          style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;
+                 outline:none;font-family:inherit;">
+    <option value="all">All Students</option>
+    <option value="weak">Weak PLOs Only</option>
+    <option value="no_grades">No Grades Yet</option>
+  </select>
+</div>
+
+<!-- Student Cards -->
+<div id="studentList">
+{% for sdata in student_plo_data %}
+<div class="student-row"
+     id="stuRow{{ forloop.counter }}"
+     data-name="{{ sdata.student.full_name|lower|default:sdata.student.username|lower }}"
+     data-username="{{ sdata.student.username|lower }}"
+     data-has-grades="{{ sdata.has_grades|yesno:'true,false' }}"
+     data-has-weak="{% if sdata.weak_plos %}true{% else %}false{% endif %}">
+
+  <!-- Student header -->
+  <div class="student-hdr">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="stu-avatar">
+        {{ sdata.student.full_name|first|upper|default:sdata.student.username|first|upper }}
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:700;">
+          {{ sdata.student.full_name|default:sdata.student.username }}
+        </div>
+        <div style="font-size:11px;color:var(--gray);">{{ sdata.student.username }}</div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+      {% if sdata.has_grades %}
+        {% if sdata.weak_plos %}
+        <span class="weak-pill">{{ sdata.weak_plos|length }} Weak PLO{{ sdata.weak_plos|length|pluralize }}</span>
+        {% endif %}
+        <span style="font-size:13px;font-weight:700;
+          {% if sdata.avg_attainment >= 80 %}color:#059669;
+          {% elif sdata.avg_attainment >= 60 %}color:#0f766e;
+          {% elif sdata.avg_attainment >= 40 %}color:#d97706;
+          {% else %}color:#dc2626;{% endif %}">
+          Avg {{ sdata.avg_attainment }}%
+        </span>
+      {% else %}
+        <span style="font-size:12px;color:var(--light);">No grades yet</span>
+      {% endif %}
+
+      <!-- Send Feedback Button -->
+      {% if sdata.has_grades %}
+      <button class="btn-notify btn-notify-feedback"
+              onclick="openNotifyModal({{ sdata.student.id }}, '{{ sdata.student.full_name|default:sdata.student.username|escapejs }}', 'plo_feedback')">
+        Send Feedback
+      </button>
+      {% if sdata.weak_plos %}
+      <button class="btn-notify btn-notify-alert"
+              onclick="openNotifyModal({{ sdata.student.id }}, '{{ sdata.student.full_name|default:sdata.student.username|escapejs }}', 'plo_alert')">
+        Send Alert
+      </button>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- PLO bars -->
+  {% if sdata.has_grades and sdata.plo_attainments %}
+  <div>
+    {% for p in sdata.plo_attainments %}
+    <div class="plo-mini-row">
+      <span class="plo-mini-code"
+            style="{% if p.attainment >= 80 %}color:#059669;{% elif p.attainment >= 60 %}color:#0f766e;{% elif p.attainment >= 40 %}color:#d97706;{% else %}color:#dc2626;{% endif %}">
+        {{ p.code }}
+      </span>
+      <div class="plo-mini-track">
+        <div class="plo-mini-fill"
+             style="width:{{ p.attainment }}%;
+               {% if p.attainment >= 80 %}background:#10b981;
+               {% elif p.attainment >= 60 %}background:#20b2aa;
+               {% elif p.attainment >= 40 %}background:#f59e0b;
+               {% else %}background:#ef4444;{% endif %}"></div>
+      </div>
+      <span class="plo-mini-pct"
+            style="{% if p.attainment >= 80 %}color:#059669;{% elif p.attainment >= 60 %}color:#0f766e;{% elif p.attainment >= 40 %}color:#d97706;{% else %}color:#dc2626;{% endif %}">
+        {{ p.attainment }}%
+      </span>
+      {% if p.is_weak %}
+      <span style="font-size:13px;" title="Needs Attention">⚠️</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% elif not sdata.has_grades %}
+  <div style="font-size:12px;color:var(--light);padding:6px 0;">
+    No graded assessments yet for this student.
+  </div>
+  {% endif %}
+
+</div>
+{% endfor %}
+</div>
+
+{% endif %}
+
+<!-- ── Notification Modal ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="notifyModal">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-head">
+      <div class="modal-title" id="notifyModalTitle">Send PLO Feedback</div>
+      <button class="modal-close" onclick="closeModal('notifyModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="notifStudentId">
+      <input type="hidden" id="notifType">
+
+      <div class="form-group">
+        <label class="form-label">Student</label>
+        <div id="notifStudentName"
+             style="padding:8px 12px;background:#f9fafb;border-radius:7px;font-size:14px;
+                    font-weight:600;"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">PLO</label>
+        <select class="form-control" id="notifPloCode">
+          {% for p in plos %}
+          <option value="{{ p.code }}">{{ p.code }} — {{ p.description|truncatechars:60 }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Message / Recommendation</label>
+        <textarea class="form-control" id="notifMessage" rows="4"
+                  placeholder="e.g. Your attainment in this PLO is below threshold. Focus on..."></textarea>
+      </div>
+
+      <div id="notifyError"
+           style="display:none;background:#fee2e2;color:#991b1b;border-radius:7px;
+                  padding:8px 12px;font-size:13px;margin-top:8px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary btn-full" onclick="submitNotification()">
+        Send Notification
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Class average chart ───────────────────────────────────────────────────
+{% if plos and student_plo_data %}
+(function(){
+  const el = document.getElementById('classAvgChart');
+  if (!el) return;
+  const plos = [{% for p in plos %}'{{ p.code }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+  const ploIds = [{% for p in plos %}{{ p.id }}{% if not forloop.last %},{% endif %}{% endfor %}];
+
+  // Compute averages from student data
+  const sums = {}, counts = {};
+  plos.forEach(c => { sums[c] = 0; counts[c] = 0; });
+
+  {% for sdata in student_plo_data %}
+  {% if sdata.has_grades %}
+  {% for p in sdata.plo_attainments %}
+  sums['{{ p.code }}'] = (sums['{{ p.code }}'] || 0) + {{ p.attainment }};
+  counts['{{ p.code }}'] = (counts['{{ p.code }}'] || 0) + 1;
+  {% endfor %}
+  {% endif %}
+  {% endfor %}
+
+  const avgs  = plos.map(c => counts[c] ? Math.round(sums[c] / counts[c] * 10) / 10 : 0);
+  const colors = avgs.map(v => v >= 80 ? '#10b981' : v >= 60 ? '#20b2aa' : v >= 40 ? '#f59e0b' : '#ef4444');
+
+  new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: plos,
+      datasets: [{
+        label: 'Class Average (%)',
+        data: avgs,
+        backgroundColor: colors,
+        borderRadius: 5,
+        barPercentage: 0.6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.raw.toFixed(1)}%` } }
+      },
+      scales: {
+        y: { min: 0, max: 100, ticks: { font: { size: 10 }, stepSize: 20 }, grid: { color: '#e5e7eb' } },
+        x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' } } }
+      }
+    }
+  });
+
+  // Update weak count
+  const weakCount = document.querySelectorAll('.student-row[data-has-weak="true"]').length;
+  const el2 = document.getElementById('weakCount');
+  if (el2) el2.textContent = weakCount;
+})();
+{% endif %}
+
+// ── Student filter ────────────────────────────────────────────────────────
+function filterStudents(q) {
+  const term = q.trim().toLowerCase();
+  const weakMode = document.getElementById('weakFilter').value;
+  document.querySelectorAll('.student-row').forEach(row => {
+    const nameOk  = !term || row.dataset.name.includes(term) || row.dataset.username.includes(term);
+    const weakOk  = weakMode !== 'weak'     || row.dataset.hasWeak   === 'true';
+    const gradeOk = weakMode !== 'no_grades' || row.dataset.hasGrades === 'false';
+    row.style.display = (nameOk && weakOk && gradeOk) ? '' : 'none';
+  });
+}
+
+// ── Notification modal ────────────────────────────────────────────────────
+function openNotifyModal(studentId, studentName, notifType) {
+  document.getElementById('notifStudentId').value   = studentId;
+  document.getElementById('notifStudentName').textContent = studentName;
+  document.getElementById('notifType').value        = notifType;
+  document.getElementById('notifMessage').value     = '';
+  document.getElementById('notifyError').style.display = 'none';
+  const title = notifType === 'plo_alert' ? 'Send PLO Alert' : 'Send PLO Feedback';
+  document.getElementById('notifyModalTitle').textContent = title;
+  openModal('notifyModal');
+}
+
+async function submitNotification() {
+  const studentId  = document.getElementById('notifStudentId').value;
+  const notifType  = document.getElementById('notifType').value;
+  const ploCode    = document.getElementById('notifPloCode').value;
+  const message    = document.getElementById('notifMessage').value.trim();
+  const errEl      = document.getElementById('notifyError');
+  const submitBtn  = document.querySelector('#notifyModal .btn-primary');
+
+  errEl.style.display = 'none';
+
+  if (!message) {
+    errEl.textContent = 'Please enter a message.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!ploCode) {
+    errEl.textContent = 'No PLO selected. Please refresh the page.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  submitBtn.disabled   = true;
+  submitBtn.textContent = 'Sending…';
+
+  try {
+    const res = await fetch("{% url 'faculty_send_plo_notification' %}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({
+        student_id: parseInt(studentId),
+        course_id:  {{ selected_course.id|default:0 }},
+        plo_code:   ploCode,
+        message,
+        notif_type: notifType,
+      })
+    });
+
+    let data;
+    try { data = await res.json(); }
+    catch(e) { throw new Error('Server returned an unexpected response. Please try again.'); }
+
+    if (data.success) {
+      closeModal('notifyModal');
+      showToast('Notification sent successfully!', '#10b981');
+    } else {
+      errEl.textContent = data.error || 'Failed to send notification.';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = e.message || 'Network error. Please try again.';
+    errEl.style.display = 'block';
+  } finally {
+    submitBtn.disabled   = false;
+    submitBtn.textContent = 'Send Notification';
+  }
+}
+
+function showToast(msg, color) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = `position:fixed;bottom:24px;right:24px;background:${color};color:#fff;
+    padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;
+    box-shadow:0 4px 16px rgba(0,0,0,.15);animation:toastIn .25s ease;`;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; }, 2500);
+  setTimeout(() => t.remove(), 2900);
+}
+const toastStyle = document.createElement('style');
+toastStyle.textContent = '@keyframes toastIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}';
+document.head.appendChild(toastStyle);
+</script>
+{% endblock %}

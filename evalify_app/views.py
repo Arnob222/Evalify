@@ -6587,3 +6587,316 @@ def faculty_batch_analytics(request):
         'selected_batch': selected_batch,
         'result': result,
     })
+
+
+# ── PLO Track ──────────────────────────────────────────────────────────────
+
+def _sem_sort_key(s):
+    parts = s.split()
+    year = int(parts[-1]) if len(parts) > 1 and parts[-1].isdigit() else 0
+    term_order = {'spring': 1, 'summer': 2, 'fall': 3, 'winter': 0}
+    return (year, term_order.get(parts[0].lower() if parts else '', 5))
+
+
+def _compute_plo_attainments_for_student(student, course):
+    SUB_TYPES = {'mid', 'final'}
+    assessments = list(
+        Assessment.objects.filter(course=course, status='published')
+        .prefetch_related(
+            'questions__clos', 'questions__plos',
+            'questions__sub_questions__clos', 'questions__sub_questions__plos',
+        )
+        .order_by('assessment_type', 'created_at')
+    )
+    if not assessments:
+        return [], False
+
+    all_columns = []
+    for a in assessments:
+        use_subs = a.assessment_type in SUB_TYPES
+        for q in a.questions.all().order_by('order'):
+            subs = list(q.sub_questions.all().order_by('order')) if use_subs else []
+            if use_subs and subs:
+                for sq in subs:
+                    all_columns.append({
+                        'is_sub': True, 'entity_id': sq.id,
+                        'max_marks': sq.max_marks,
+                        'plo_ids': [p.id for p in sq.plos.all()],
+                    })
+            else:
+                all_columns.append({
+                    'is_sub': False, 'entity_id': q.id,
+                    'max_marks': q.max_marks,
+                    'plo_ids': [p.id for p in q.plos.all()],
+                })
+
+    plo_ids_used = set()
+    for col in all_columns:
+        plo_ids_used.update(col['plo_ids'])
+    if not plo_ids_used:
+        return [], False
+
+    plos = list(PLO.objects.filter(id__in=plo_ids_used))
+    plo_max = {p.id: sum(col['max_marks'] for col in all_columns if p.id in col['plo_ids']) for p in plos}
+
+    q_ids = [col['entity_id'] for col in all_columns if not col['is_sub']]
+    sq_ids = [col['entity_id'] for col in all_columns if col['is_sub']]
+    q_m, sq_m = {}, {}
+    if q_ids:
+        for g in QuestionGrade.objects.filter(
+            question_id__in=q_ids,
+            submission__assessment__course=course,
+            submission__student=student,
+        ):
+            q_m[g.question_id] = g.marks_obtained
+    if sq_ids:
+        for g in SubQuestionGrade.objects.filter(
+            sub_question_id__in=sq_ids,
+            submission__assessment__course=course,
+            submission__student=student,
+        ):
+            sq_m[g.sub_question_id] = g.marks_obtained
+
+    has_grades = bool(q_m or sq_m)
+
+    def _mark(col):
+        return sq_m.get(col['entity_id'], 0) if col['is_sub'] else q_m.get(col['entity_id'], 0)
+
+    results = []
+    for p in plos:
+        mx = plo_max[p.id]
+        if mx == 0:
+            continue
+        raw = sum(_mark(col) for col in all_columns if p.id in col['plo_ids'])
+        att = round(raw / mx * 100, 1)
+        results.append({'plo_id': p.id, 'code': p.code, 'description': p.description, 'attainment': att})
+    return results, has_grades
+
+
+@student_required
+def student_plo_track(request):
+    student = request.user
+    enrollments = Enrollment.objects.filter(student=student).select_related('course')
+
+    raw_records = []
+    all_courses = []
+
+    for e in enrollments:
+        course = e.course
+        all_courses.append(course)
+        plo_results, has_grades = _compute_plo_attainments_for_student(student, course)
+        if not has_grades:
+            continue
+        for p in plo_results:
+            raw_records.append({
+                'course': course,
+                'course_id': course.id,
+                'course_code': course.code,
+                'course_name': course.name,
+                'semester': course.semester,
+                'plo_id': p['plo_id'],
+                'plo_code': p['code'],
+                'plo_desc': p['description'],
+                'attainment': p['attainment'],
+            })
+
+    sorted_records = sorted(raw_records, key=lambda r: (_sem_sort_key(r['semester']), r['course_code']))
+
+    # Build per-PLO trend data
+    plo_info = {}
+    for r in sorted_records:
+        plo_info[r['plo_id']] = {'code': r['plo_code'], 'description': r['plo_desc']}
+
+    plo_trends = []
+    for plo_id, info in sorted(plo_info.items(), key=lambda x: x[1]['code']):
+        records = [r for r in sorted_records if r['plo_id'] == plo_id]
+        prev_att = None
+        records_with_trend = []
+        for r in records:
+            if prev_att is None:
+                trend = 'first'
+            elif r['attainment'] > prev_att + 2:
+                trend = 'up'
+            elif r['attainment'] < prev_att - 2:
+                trend = 'down'
+            else:
+                trend = 'stable'
+            records_with_trend.append({**r, 'trend': trend})
+            prev_att = r['attainment']
+
+        if len(records) >= 2:
+            if records[-1]['attainment'] > records[0]['attainment'] + 2:
+                overall = 'up'
+            elif records[-1]['attainment'] < records[0]['attainment'] - 2:
+                overall = 'down'
+            else:
+                overall = 'stable'
+        else:
+            overall = 'first'
+
+        plo_trends.append({
+            'plo_id': plo_id,
+            'code': info['code'],
+            'description': info['description'],
+            'records': records_with_trend,
+            'overall_trend': overall,
+            'min_att': min(r['attainment'] for r in records) if records else 0,
+            'max_att': max(r['attainment'] for r in records) if records else 0,
+            'latest_att': records[-1]['attainment'] if records else 0,
+            'is_weak': (records[-1]['attainment'] if records else 0) < 40,
+        })
+
+    all_semesters = sorted(set(r['semester'] for r in raw_records), key=_sem_sort_key)
+    unique_courses = list({c.id: c for c in all_courses}.values())
+    all_plo_opts = sorted(
+        [{'id': pid, 'code': info['code'], 'description': info['description']}
+         for pid, info in plo_info.items()],
+        key=lambda x: x['code'],
+    )
+
+    # Per-course chart data
+    course_chart_data = []
+    for course in unique_courses:
+        recs = sorted([r for r in sorted_records if r['course_id'] == course.id], key=lambda r: r['plo_code'])
+        if not recs:
+            continue
+        course_chart_data.append({
+            'course': course,
+            'plo_codes': [r['plo_code'] for r in recs],
+            'attainments': [r['attainment'] for r in recs],
+            'colors': [
+                '#10b981' if r['attainment'] >= 80
+                else '#20b2aa' if r['attainment'] >= 60
+                else '#f59e0b' if r['attainment'] >= 40
+                else '#ef4444'
+                for r in recs
+            ],
+        })
+
+    weak_plos = [p for p in plo_trends if p['is_weak']]
+
+    return render(request, 'student/plo_track.html', {
+        'plo_trends': plo_trends,
+        'sorted_records': sorted_records,
+        'all_semesters': all_semesters,
+        'all_courses': unique_courses,
+        'all_plo_opts': all_plo_opts,
+        'course_chart_data': course_chart_data,
+        'weak_plos': weak_plos,
+    })
+
+
+@faculty_required
+def faculty_plo_track(request):
+    faculty = request.user
+    courses = list(Course.objects.filter(faculty=faculty, is_archived=False).order_by('-created_at'))
+
+    selected_course_id = request.GET.get('course_id')
+    selected_course = None
+    if selected_course_id:
+        try:
+            selected_course = Course.objects.get(id=int(selected_course_id), faculty=faculty)
+        except (Course.DoesNotExist, ValueError):
+            pass
+    if selected_course is None and courses:
+        selected_course = courses[0]
+
+    student_plo_data = []
+    plos_for_template = []
+
+    if selected_course:
+        enrollments = Enrollment.objects.filter(course=selected_course).select_related('student')
+        students = [e.student for e in enrollments if e.student.role == 'student']
+
+        plo_id_set = set()
+        student_results = []
+        for student in students:
+            plo_results, has_grades = _compute_plo_attainments_for_student(student, selected_course)
+            for p in plo_results:
+                plo_id_set.add(p['plo_id'])
+            student_results.append((student, plo_results, has_grades))
+
+        all_plos = list(PLO.objects.filter(id__in=plo_id_set).order_by('code'))
+        plos_for_template = [{'id': p.id, 'code': p.code, 'description': p.description} for p in all_plos]
+
+        for student, plo_results, has_grades in student_results:
+            att_map = {p['plo_id']: p for p in plo_results}
+            ordered = []
+            for plo in all_plos:
+                entry = att_map.get(plo.id, {'plo_id': plo.id, 'code': plo.code, 'description': plo.description, 'attainment': 0.0})
+                entry['is_weak'] = entry['attainment'] < 40
+                ordered.append(entry)
+            weak_plos = [p for p in ordered if p['is_weak'] and has_grades]
+            student_plo_data.append({
+                'student': student,
+                'plo_attainments': ordered,
+                'weak_plos': weak_plos,
+                'has_grades': has_grades,
+                'avg_attainment': round(sum(p['attainment'] for p in ordered) / len(ordered), 1) if ordered else 0.0,
+            })
+
+    return render(request, 'faculty/plo_track.html', {
+        'courses': courses,
+        'selected_course': selected_course,
+        'student_plo_data': student_plo_data,
+        'plos': plos_for_template,
+    })
+
+
+@faculty_required
+def faculty_send_plo_notification(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, Exception):
+        return JsonResponse({'error': 'Invalid request body'}, status=400)
+
+    student_id = data.get('student_id')
+    course_id  = data.get('course_id')
+    plo_code   = data.get('plo_code', '')
+    message    = data.get('message', '').strip()
+    notif_type = data.get('notif_type', 'plo_feedback')
+
+    if notif_type not in ('plo_feedback', 'plo_alert'):
+        notif_type = 'plo_feedback'
+
+    if not all([student_id, course_id, plo_code, message]):
+        return JsonResponse({'error': 'Please fill in all fields (PLO and message are required).'}, status=400)
+
+    try:
+        student = User.objects.get(id=int(student_id), role='student')
+    except (User.DoesNotExist, ValueError, TypeError):
+        return JsonResponse({'error': 'Student not found.'}, status=404)
+
+    try:
+        course = Course.objects.filter(id=int(course_id), faculty=request.user).first()
+        if course is None:
+            return JsonResponse({'error': 'Course not found or access denied.'}, status=404)
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Invalid course.'}, status=400)
+
+    # Verify student is enrolled in this course
+    if not Enrollment.objects.filter(student=student, course=course).exists():
+        return JsonResponse({'error': 'This student is not enrolled in the selected course.'}, status=403)
+
+    title = f"{'PLO Alert' if notif_type == 'plo_alert' else 'PLO Feedback'}: {plo_code} — {course.code}"
+    full_message = (
+        f"Course: {course.code} - {course.name}\n"
+        f"PLO: {plo_code}\n\n"
+        f"From {request.user.full_name or request.user.username}:\n{message}"
+    )
+
+    try:
+        Notification.objects.create(
+            recipient=student,
+            notif_type=notif_type,
+            title=title,
+            message=full_message,
+            course=course,
+        )
+    except Exception as e:
+        return JsonResponse({'error': f'Failed to create notification: {str(e)}'}, status=500)
+
+    return JsonResponse({'success': True})

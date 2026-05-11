@@ -252,10 +252,9 @@
 {% endif %}
 <!-- ══ end semester comparison ══════════════════════════════════════════ -->
 
-<!-- ══ PLO Attainment per Course by Semester ════════════════════════════ -->
-{% if semester_plo_ranking %}
-<div style="background:#fff;border-radius:14px;border:1px solid var(--border);
-            padding:24px;margin-bottom:28px;box-shadow:0 2px 8px rgba(0,0,0,.05);">
+{% comment %}PLO per-course ranking moved to PLO Track page{% endcomment %}
+{% if False %}
+<div>
 
   <div style="display:flex;justify-content:space-between;align-items:flex-start;
               margin-bottom:20px;flex-wrap:wrap;gap:12px;">
@@ -498,18 +497,6 @@
 
 {% block scripts %}
 <script>
-/* ── PLO per-course ranking — semester tab switcher ── */
-function switchPloRankTab(btn) {
-  document.querySelectorAll('.plo-rank-tab').forEach(b => {
-    b.style.background = '#fff'; b.style.color = 'var(--teal)';
-    b.classList.remove('plo-rank-tab-active');
-  });
-  btn.style.background = 'var(--teal)'; btn.style.color = '#fff';
-  btn.classList.add('plo-rank-tab-active');
-  document.querySelectorAll('.plo-rank-panel').forEach(p => p.style.display = 'none');
-  const target = document.getElementById(btn.dataset.target);
-  if (target) target.style.display = 'block';
-}
 
 function getColor(v){
   if(v>=80) return '#10b981';

@@ -1,0 +1,396 @@
+{% extends 'student/base.html' %}
+{% block nav_plo_track %}active{% endblock %}
+
+{% block content %}
+<style>
+.pt-card{background:#fff;border-radius:14px;border:1px solid var(--border);padding:24px;margin-bottom:22px;}
+.pt-card-title{font-size:16px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:10px;}
+.trend-up{color:#10b981;font-weight:700;}
+.trend-down{color:#ef4444;font-weight:700;}
+.trend-stable{color:#f59e0b;font-weight:700;}
+.trend-first{color:#6b7280;font-weight:700;}
+.plo-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6;}
+.plo-row:last-child{border-bottom:none;}
+.plo-code-badge{min-width:52px;height:32px;border-radius:8px;display:inline-flex;align-items:center;
+                 justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;}
+.plo-code-badge.excellent{background:#d1fae5;color:#065f46;}
+.plo-code-badge.good{background:#ccfbf1;color:#0f766e;}
+.plo-code-badge.developing{background:#fef3c7;color:#92400e;}
+.plo-code-badge.weak{background:#fee2e2;color:#991b1b;}
+.filter-chip{padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
+             border:1.5px solid var(--border);background:#fff;color:var(--gray);transition:all .15s;}
+.filter-chip.active{background:var(--teal);color:#fff;border-color:var(--teal);}
+.weak-alert{background:linear-gradient(135deg,#fff5f5,#fff);border:1.5px solid #fca5a5;
+            border-radius:12px;padding:18px 20px;margin-bottom:14px;display:flex;align-items:flex-start;gap:14px;}
+.chart-wrap{position:relative;height:240px;}
+.course-trend-card{background:#f9fafb;border-radius:10px;padding:14px 16px;margin-bottom:10px;
+                   border:1px solid var(--border);}
+.course-trend-card .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.course-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:5px;
+              background:#dbeafe;color:#1d4ed8;}
+.att-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.att-row:last-child{margin-bottom:0;}
+.progress-track{flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;}
+.progress-fill{height:100%;border-radius:4px;transition:width .7s ease;}
+.section-hdr{font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px;
+             display:flex;align-items:center;gap:8px;}
+</style>
+
+<div class="page-title">PLO Track</div>
+<div class="page-sub">Semester-wise PLO attainment trends, weak areas, and course-wise contribution.</div>
+
+{% if not plo_trends %}
+<div style="text-align:center;padding:80px 20px;">
+  <div style="font-size:48px;margin-bottom:14px;">📈</div>
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px;">No Data Yet</div>
+  <div style="font-size:13px;color:var(--gray);">Enroll in courses and get assessments graded to see your PLO trends.</div>
+  <a href="{% url 'student_courses' %}" class="btn btn-primary" style="margin-top:20px;">Browse Courses</a>
+</div>
+{% else %}
+
+<!-- ── Filters ─────────────────────────────────────────────────────────── -->
+<div style="background:#fff;border-radius:12px;border:1px solid var(--border);
+            padding:16px 20px;margin-bottom:22px;">
+  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">
+
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;
+                  letter-spacing:.5px;margin-bottom:8px;">Semester</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;" id="semFilters">
+        <button class="filter-chip active" data-sem="all" onclick="applyFilter()">All</button>
+        {% for sem in all_semesters %}
+        <button class="filter-chip" data-sem="{{ sem }}" onclick="applyFilter()">{{ sem }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;
+                  letter-spacing:.5px;margin-bottom:8px;">Course</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;" id="courseFilters">
+        <button class="filter-chip active" data-course="all" onclick="applyFilter()">All</button>
+        {% for c in all_courses %}
+        <button class="filter-chip" data-course="{{ c.id }}" onclick="applyFilter()">{{ c.code }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;
+                  letter-spacing:.5px;margin-bottom:8px;">PLO</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;" id="ploFilters">
+        <button class="filter-chip active" data-plo="all" onclick="applyFilter()">All</button>
+        {% for p in all_plo_opts %}
+        <button class="filter-chip" data-plo="{{ p.id }}" onclick="applyFilter()">{{ p.code }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Weak PLO Alert ──────────────────────────────────────────────────── -->
+{% if weak_plos %}
+<div style="background:linear-gradient(135deg,#fff5f5,#fff);border:1.5px solid #fca5a5;
+            border-radius:14px;padding:20px 24px;margin-bottom:22px;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+    <span style="font-size:24px;">⚠️</span>
+    <div>
+      <div style="font-size:15px;font-weight:800;color:#991b1b;">Weak PLO Areas — Need Attention</div>
+      <div style="font-size:12px;color:#b91c1c;margin-top:2px;">
+        {{ weak_plos|length }} PLO{{ weak_plos|length|pluralize }} currently below 40% attainment
+      </div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+    {% for p in weak_plos %}
+    <div style="background:#fff;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-weight:800;color:#991b1b;font-size:13px;">{{ p.code }}</span>
+        <span style="font-size:17px;font-weight:800;color:#dc2626;">{{ p.latest_att }}%</span>
+      </div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:8px;">{{ p.description|truncatechars:60 }}</div>
+      <div style="height:6px;background:#fecaca;border-radius:3px;overflow:hidden;">
+        <div style="height:100%;border-radius:3px;background:#ef4444;width:{{ p.latest_att }}%;"></div>
+      </div>
+      {% if p.overall_trend == 'down' %}
+      <div style="font-size:10px;color:#dc2626;margin-top:4px;font-weight:600;">▼ Declining trend</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Per-Course PLO Charts ───────────────────────────────────────────── -->
+{% if course_chart_data %}
+<div class="pt-card">
+  <div class="pt-card-title">
+    <span style="font-size:20px;">📊</span> PLO Attainment by Course
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px;">
+    {% for cd in course_chart_data %}
+    <div style="background:#f9fafb;border-radius:10px;padding:14px;" data-course-id="{{ cd.course.id }}"
+         class="course-chart-block">
+      <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">
+        {{ cd.course.code }}
+        <span style="font-weight:400;color:var(--gray);font-size:12px;">— {{ cd.course.name }}</span>
+      </div>
+      <div style="font-size:11px;color:var(--light);margin-bottom:10px;">{{ cd.course.semester }}</div>
+      <div class="chart-wrap">
+        <canvas id="courseChart{{ forloop.counter }}"></canvas>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── PLO Trend Analysis ──────────────────────────────────────────────── -->
+<div class="pt-card">
+  <div class="pt-card-title">
+    <span style="font-size:20px;">📈</span> PLO Trend Analysis
+    <span style="font-size:12px;font-weight:400;color:var(--gray);margin-left:4px;">
+      Track each PLO across courses and semesters
+    </span>
+  </div>
+
+  {% for trend in plo_trends %}
+  <div class="course-trend-card plo-trend-block"
+       data-plo-id="{{ trend.plo_id }}"
+       data-course-ids="{% for r in trend.records %}{{ r.course_id }}{% if not forloop.last %},{% endif %}{% endfor %}"
+       data-sems="{% for r in trend.records %}{{ r.semester }}{% if not forloop.last %},{% endif %}{% endfor %}">
+
+    <!-- PLO header -->
+    <div class="hdr">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="plo-code-badge {% if trend.latest_att >= 80 %}excellent{% elif trend.latest_att >= 60 %}good{% elif trend.latest_att >= 40 %}developing{% else %}weak{% endif %}">
+          {{ trend.code }}
+        </span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text);">{{ trend.description|truncatechars:70 }}</div>
+          <div style="font-size:11px;color:var(--gray);margin-top:2px;">
+            Latest: <strong>{{ trend.latest_att }}%</strong> &nbsp;&middot;&nbsp;
+            Range: {{ trend.min_att }}% – {{ trend.max_att }}%
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        {% if trend.overall_trend == 'up' %}
+        <span class="trend-up" style="font-size:13px;">▲ Improving</span>
+        {% elif trend.overall_trend == 'down' %}
+        <span class="trend-down" style="font-size:13px;">▼ Declining</span>
+        {% elif trend.overall_trend == 'stable' %}
+        <span class="trend-stable" style="font-size:13px;">▶ Stable</span>
+        {% endif %}
+        <span style="font-size:22px;font-weight:800;
+          {% if trend.latest_att >= 80 %}color:#059669;
+          {% elif trend.latest_att >= 60 %}color:#0f766e;
+          {% elif trend.latest_att >= 40 %}color:#d97706;
+          {% else %}color:#dc2626;{% endif %}">
+          {{ trend.latest_att }}%
+        </span>
+      </div>
+    </div>
+
+    <!-- Per-course attainment bars -->
+    {% for r in trend.records %}
+    <div class="att-row">
+      <span class="course-badge">{{ r.course_code }}</span>
+      <span style="font-size:10px;color:var(--light);width:72px;flex-shrink:0;">{{ r.semester }}</span>
+      <div class="progress-track">
+        <div class="progress-fill"
+             style="width:{{ r.attainment }}%;
+               {% if r.attainment >= 80 %}background:#10b981;
+               {% elif r.attainment >= 60 %}background:#20b2aa;
+               {% elif r.attainment >= 40 %}background:#f59e0b;
+               {% else %}background:#ef4444;{% endif %}"></div>
+      </div>
+      <span style="font-size:12px;font-weight:700;width:40px;text-align:right;flex-shrink:0;
+        {% if r.attainment >= 80 %}color:#059669;
+        {% elif r.attainment >= 60 %}color:#0f766e;
+        {% elif r.attainment >= 40 %}color:#d97706;
+        {% else %}color:#dc2626;{% endif %}">
+        {{ r.attainment }}%
+      </span>
+      <!-- Trend marker -->
+      {% if r.trend == 'up' %}
+      <span style="font-size:14px;flex-shrink:0;" title="Improved">🟢</span>
+      {% elif r.trend == 'down' %}
+      <span style="font-size:14px;flex-shrink:0;" title="Declined">🔴</span>
+      {% elif r.trend == 'stable' %}
+      <span style="font-size:14px;flex-shrink:0;" title="Stable">🟡</span>
+      {% else %}
+      <span style="font-size:14px;flex-shrink:0;" title="First record">⚪</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <!-- Mini line chart for this PLO -->
+    {% if trend.records|length > 1 %}
+    <div style="margin-top:12px;background:#fff;border-radius:8px;padding:10px;">
+      <div style="font-size:10px;font-weight:600;color:var(--gray);margin-bottom:8px;
+                  text-transform:uppercase;letter-spacing:.4px;">Trend Chart</div>
+      <div style="position:relative;height:100px;">
+        <canvas id="trendChart{{ forloop.counter }}"></canvas>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ── Improvement Legend ──────────────────────────────────────────────── -->
+<div style="background:#fff;border-radius:12px;border:1px solid var(--border);
+            padding:16px 20px;display:flex;flex-wrap:wrap;gap:18px;">
+  <div style="font-size:12px;font-weight:700;color:var(--gray);
+              text-transform:uppercase;letter-spacing:.5px;width:100%;margin-bottom:4px;">Legend</div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);">
+    <span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block;"></span> Excellent (&ge;80%)
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);">
+    <span style="width:10px;height:10px;border-radius:50%;background:#20b2aa;display:inline-block;"></span> Good (&ge;60%)
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);">
+    <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block;"></span> Developing (&ge;40%)
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);">
+    <span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block;"></span> Needs Attention (&lt;40%)
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray);">
+    🟢 Improved &nbsp; 🔴 Declined &nbsp; 🟡 Stable &nbsp; ⚪ First record
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if plo_trends %}
+<script>
+// ── Filter logic ──────────────────────────────────────────────────────────
+function getActiveFilter(groupId) {
+  const active = document.querySelector(`#${groupId} .filter-chip.active`);
+  return active ? active.dataset[groupId === 'semFilters' ? 'sem' : groupId === 'courseFilters' ? 'course' : 'plo'] : 'all';
+}
+function activateChip(btn, groupId) {
+  document.querySelectorAll(`#${groupId} .filter-chip`).forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+}
+document.querySelectorAll('.filter-chip').forEach(btn => {
+  btn.addEventListener('click', function () {
+    const group = this.closest('[id$="Filters"]');
+    if (group) activateChip(this, group.id);
+    applyFilter();
+  });
+});
+function applyFilter() {
+  const selSem    = getActiveFilter('semFilters');
+  const selCourse = getActiveFilter('courseFilters');
+  const selPlo    = getActiveFilter('ploFilters');
+
+  // Filter course chart blocks
+  document.querySelectorAll('.course-chart-block').forEach(el => {
+    const cid = el.dataset.courseId;
+    el.style.display = (selCourse === 'all' || selCourse === cid) ? '' : 'none';
+  });
+
+  // Filter PLO trend blocks
+  document.querySelectorAll('.plo-trend-block').forEach(el => {
+    const pid   = el.dataset.ploId;
+    const cids  = (el.dataset.courseIds || '').split(',');
+    const sems  = (el.dataset.sems || '').split(',');
+    const ploOk    = selPlo    === 'all' || selPlo === pid;
+    const courseOk = selCourse === 'all' || cids.includes(selCourse);
+    const semOk    = selSem    === 'all' || sems.includes(selSem);
+    el.style.display = (ploOk && courseOk && semOk) ? '' : 'none';
+  });
+}
+
+// ── Course PLO bar charts ─────────────────────────────────────────────────
+const BAR_PALETTE = ['#4472C4','#ED7D31','#70AD47','#7030A0','#00B0F0','#FFC000','#FF0000','#00B050'];
+
+{% for cd in course_chart_data %}
+(function(){
+  const el = document.getElementById('courseChart{{ forloop.counter }}');
+  if (!el) return;
+  const labels = [{% for code in cd.plo_codes %}'{{ code }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+  const values = [{% for v in cd.attainments %}{{ v }}{% if not forloop.last %},{% endif %}{% endfor %}];
+  const colors = [{% for c in cd.colors %}'{{ c }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+  new Chart(el, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Attainment (%)',
+        data: values,
+        backgroundColor: colors,
+        borderRadius: 4,
+        barPercentage: 0.65,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.raw.toFixed(1)}%` } }
+      },
+      scales: {
+        y: { min: 0, max: 100, ticks: { font: { size: 9 }, stepSize: 20, color: '#6b7280' }, grid: { color: '#e5e7eb' } },
+        x: { grid: { display: false }, ticks: { font: { size: 10, weight: '600' }, color: '#374151' } }
+      }
+    }
+  });
+})();
+{% endfor %}
+
+// ── PLO Trend line charts ─────────────────────────────────────────────────
+{% for trend in plo_trends %}
+{% if trend.records|length > 1 %}
+(function(){
+  const el = document.getElementById('trendChart{{ forloop.counter }}');
+  if (!el) return;
+  const labels = [{% for r in trend.records %}'{{ r.course_code }} ({{ r.semester }})'{% if not forloop.last %},{% endif %}{% endfor %}];
+  const values = [{% for r in trend.records %}{{ r.attainment }}{% if not forloop.last %},{% endif %}{% endfor %}];
+  const ptColors = values.map((v,i) => {
+    if (i === 0) return '#6b7280';
+    return values[i] > values[i-1] + 2 ? '#10b981' : values[i] < values[i-1] - 2 ? '#ef4444' : '#f59e0b';
+  });
+  new Chart(el, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: '{{ trend.code }}',
+        data: values,
+        borderColor: '{% if trend.overall_trend == "up" %}#10b981{% elif trend.overall_trend == "down" %}#ef4444{% else %}#f59e0b{% endif %}',
+        borderWidth: 2,
+        fill: false,
+        tension: 0.3,
+        pointBackgroundColor: ptColors,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.raw.toFixed(1)}%` } }
+      },
+      scales: {
+        y: { min: 0, max: 100, ticks: { font: { size: 9 }, stepSize: 25, color: '#6b7280' }, grid: { color: '#e5e7eb' } },
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#374151', maxRotation: 30 } }
+      }
+    }
+  });
+})();
+{% endif %}
+{% endfor %}
+
+</script>
+{% endif %}
+{% endblock %}

@@ -256,6 +256,8 @@ class Notification(models.Model):
         ('new_assignment',    'New Assignment'),
         ('new_material',      'New Material'),
         ('announcement',      'Announcement'),
+        ('plo_feedback',      'PLO Feedback'),
+        ('plo_alert',         'PLO Alert'),
     ]
 
     recipient  = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')

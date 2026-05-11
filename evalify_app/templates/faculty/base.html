@@ -219,7 +219,7 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
       <span class="nav-icon"></span> Analytics
     </a>
     <a href="{% url 'faculty_semester_plo_comparison' %}" class="{% block nav_semester_plo_comparison %}{% endblock %}">
-      <span class="nav-icon"></span> PLO Comparison
+      <span class="nav-icon"></span> PLO Trend
     </a>
     <a href="{% url 'faculty_marks_sheet' %}" class="{% block nav_marks_sheet %}{% endblock %}">
       <span class="nav-icon"></span> Marks Sheet
@@ -240,7 +240,10 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
     <a href="{% url 'faculty_batch_analytics' %}" class="{% block nav_batch_analytics %}{% endblock %}">
       <span class="nav-icon"></span> Batch Analytics
     </a>
-    
+    <a href="{% url 'faculty_plo_track' %}" class="{% block nav_plo_track %}{% endblock %}">
+      <span class="nav-icon"></span> PLO Track
+    </a>
+
   </nav>
   <div class="sidebar-footer">
     <div class="user-name">{{ request.user.full_name|default:request.user.username }}</div>

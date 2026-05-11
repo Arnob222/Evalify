@@ -166,6 +166,11 @@ urlpatterns = [
     path('dept-head/sections/<int:section_id>/remove-student/<int:student_id>/', views.dept_head_section_remove_student, name='dept_head_section_remove_student'),
     path('dept-head/sections/<int:section_id>/delete/', views.dept_head_delete_section, name='dept_head_delete_section'),
 
+# PLO Track
+    path('student/plo-track/', views.student_plo_track, name='student_plo_track'),
+    path('faculty/plo-track/', views.faculty_plo_track, name='faculty_plo_track'),
+    path('faculty/plo-track/notify/', views.faculty_send_plo_notification, name='faculty_send_plo_notification'),
+
 # Assessment Download
     path('faculty/assignments/<int:assessment_id>/download/<str:fmt>/', views.download_assessment, name='download_assessment'),
     
