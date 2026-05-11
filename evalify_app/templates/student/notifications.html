@@ -3,11 +3,26 @@
 
 {% block content %}
 
+<!-- New-notification banner (hidden until polling detects one) -->
+<div id="newNotifBanner" style="display:none;background:linear-gradient(90deg,#dbeafe,#eff6ff);
+     border:1px solid #93c5fd;border-radius:10px;padding:10px 18px;margin-bottom:16px;
+     display:none;align-items:center;gap:12px;">
+  <span style="font-size:16px;">🔔</span>
+  <span style="font-size:13px;font-weight:600;color:#1d4ed8;flex:1;">
+    New notification received!
+  </span>
+  <button onclick="location.reload()"
+          style="padding:5px 14px;border-radius:7px;border:none;background:#2563eb;color:#fff;
+                 font-size:12px;font-weight:600;cursor:pointer;">
+    Refresh
+  </button>
+</div>
+
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;">
   <div>
     <div class="page-title">Notifications</div>
     <div class="page-sub">
-      Grades, deadlines, new assignments &amp; announcements
+      Grades, deadlines, new assignments, PLO feedback &amp; more
       {% if unread_count %}
       <span style="background:var(--red);color:#fff;font-size:11px;font-weight:700;
                    padding:2px 8px;border-radius:10px;margin-left:8px;">
@@ -29,6 +44,8 @@
   <button class="n-tab" data-type="new_assignment"        onclick="filterTab('new_assignment',this)">Assignments</button>
   <button class="n-tab" data-type="new_material"          onclick="filterTab('new_material',this)">Materials</button>
   <button class="n-tab" data-type="announcement"          onclick="filterTab('announcement',this)">Announcements</button>
+  <button class="n-tab" data-type="plo_feedback"          onclick="filterTab('plo_feedback',this)">PLO Feedback</button>
+  <button class="n-tab" data-type="plo_alert"             onclick="filterTab('plo_alert',this)">PLO Alerts</button>
 </div>
 
 <style>
@@ -54,12 +71,16 @@
                          {% elif n.notif_type == 'deadline_tomorrow' %}#fef3c7
                          {% elif n.notif_type == 'new_assignment' %}#dbeafe
                          {% elif n.notif_type == 'new_material' %}#f0fdf4
+                         {% elif n.notif_type == 'plo_feedback' %}#ede9fe
+                         {% elif n.notif_type == 'plo_alert' %}#fff1f2
                          {% else %}#f3f4f6{% endif %};">
     {% if n.notif_type == 'grade_released' %}
     {% elif n.notif_type == 'deadline_today' %}
     {% elif n.notif_type == 'deadline_tomorrow' %}
     {% elif n.notif_type == 'new_assignment' %}
     {% elif n.notif_type == 'new_material' %}
+    {% elif n.notif_type == 'plo_feedback' %}📝
+    {% elif n.notif_type == 'plo_alert' %}🚨
     {% else %}{% endif %}
   </div>
 
@@ -80,7 +101,7 @@
     </div>
 
     <div style="font-size:13px;color:var(--gray);margin-top:4px;line-height:1.5;">
-      {{ n.message }}
+      {{ n.message|linebreaksbr }}
     </div>
 
     <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
@@ -94,11 +115,15 @@
                    {% elif 'deadline' in n.notif_type %}#fee2e2
                    {% elif n.notif_type == 'new_assignment' %}#dbeafe
                    {% elif n.notif_type == 'new_material' %}#d1fae5
+                   {% elif n.notif_type == 'plo_feedback' %}#ede9fe
+                   {% elif n.notif_type == 'plo_alert' %}#fff1f2
                    {% else %}#f3f4f6{% endif %};
         color:{% if n.notif_type == 'grade_released' %}#166534
               {% elif 'deadline' in n.notif_type %}#991b1b
               {% elif n.notif_type == 'new_assignment' %}#1d4ed8
               {% elif n.notif_type == 'new_material' %}#065f46
+              {% elif n.notif_type == 'plo_feedback' %}#6d28d9
+              {% elif n.notif_type == 'plo_alert' %}#9f1239
               {% else %}#374151{% endif %};">
         {{ n.get_notif_type_display }}
       </span>
@@ -122,6 +147,11 @@
       <a href="{% url 'student_materials' %}?course={{ n.course.id }}"
          style="font-size:12px;color:var(--teal);text-decoration:none;font-weight:500;">
         View Materials →
+      </a>
+      {% elif n.notif_type == 'plo_feedback' or n.notif_type == 'plo_alert' %}
+      <a href="{% url 'student_plo_track' %}"
+         style="font-size:12px;color:#6d28d9;text-decoration:none;font-weight:500;">
+        View PLO Track →
       </a>
       {% endif %}
     </div>
@@ -170,5 +200,20 @@ async function markAllRead() {
   const badge = document.querySelector('[style*="background:var(--red)"]');
   if (badge) badge.remove();
 }
+
+// Poll for new notifications while student is on this page
+(function () {
+  async function checkNew() {
+    try {
+      const res  = await fetch("{% url 'get_unread_count' %}");
+      const data = await res.json();
+      if (data.count > 0) {
+        const banner = document.getElementById('newNotifBanner');
+        if (banner) banner.style.display = 'flex';
+      }
+    } catch(e) {}
+  }
+  setInterval(checkNew, 15000);
+})();
 </script>
 {% endblock %}

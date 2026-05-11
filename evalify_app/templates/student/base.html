@@ -134,6 +134,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
       </span>
       Notifications
     </a>
+    <a href="{% url 'student_plo_track' %}" class="{% block nav_plo_track %}{% endblock %}">
+      <span class="nav-icon"></span> PLO Track
+    </a>
     <a href="{% url 'student_question_bank' %}" class="{% block nav_question_bank %}{% endblock %}">
       <span class="nav-icon"></span> Question Bank
     </a>
