@@ -2,71 +2,126 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Evalify - Sign In</title>
-<link rel="icon" type="image/png" href="{% static 'images/evalify_icon.PNG' %}">
-<link rel="stylesheet" href="{% static 'css/sign_in_style.css' %}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evalify - Sign In</title>
+    <link rel="icon" type="image/png" href="{% static 'images/evalify_icon.PNG' %}">
+    <link rel="stylesheet" href="{% static 'css/sign_in_style.css' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
-<div class="signup-container">
+    <div class="bg-grid"></div>
+    <div class="bg-glow"></div>
 
-  <div class="logo-section">
-    <img src="{% static 'images/evalify_icon.PNG' %}" class="logo-img" alt="Evalify Logo">
-    <span class="logo-text">Evalify</span>
-  </div>
+    <div class="page-wrap">
 
-  <div class="signup-card">
-    <h2>Sign In To Continue</h2>
+        <!-- Left panel -->
+        <div class="left-panel">
+            <a href="{% url 'home' %}" class="logo">
+                <img src="{% static 'images/evalify_icon.PNG' %}" alt="Evalify" class="logo-img">
+                <span class="logo-text">Evalify</span>
+            </a>
 
-    {% if request.GET.registered %}
-    <div style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#059669;font-size:14px;">
-      Account created successfully. Please sign in.
-    </div>
-    {% endif %}
-    {% if error %}
-    <div style="background:rgba(255,80,80,0.15);border:1px solid rgba(255,80,80,0.3);border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#ff6b6b;font-size:14px;">
-      {{ error }}
-    </div>
-    {% endif %}
+            <div class="left-body">
+                <div class="left-badge">
+                    <span class="badge-dot"></span> OBE Assessment Platform
+                </div>
+                <h2>Welcome<br>back.</h2>
+                <p>Sign in to continue tracking learning outcomes and managing assessments.</p>
 
-    <form method="POST" action="{% url 'sign_in_html' %}">
-      {% csrf_token %}
-
-      <div class="input-group">
-        <label>Email</label>
-        <input type="email" name="email" placeholder="Enter your email address" required>
-      </div>
-
-      <div class="input-group">
-        <div class="label-row">
-          <label>Password</label>
-          <span class="toggle-password" id="togglePass">👁 Hide</span>
+                <div class="info-cards">
+                    <div class="info-card">
+                        <div class="info-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        </div>
+                        <div>
+                            <p class="info-title">CLO &amp; PLO Tracking</p>
+                            <p class="info-sub">Real-time attainment data</p>
+                        </div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        </div>
+                        <div>
+                            <p class="info-title">Secure &amp; Private</p>
+                            <p class="info-sub">Your data is protected</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <input type="password" id="passwordField" name="password" placeholder="Enter your password" required>
-      </div>
 
-      <div class="label-row" style="margin-bottom:20px">
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px">
-          <input type="checkbox" name="remember">
-          Remember me
-        </label>
-        <a href="#" style="color:var(--text-muted);font-size:12px;text-decoration:none">
-          Forget your password?
-        </a>
-      </div>
+        <!-- Right panel -->
+        <div class="right-panel">
+            <div class="form-card">
 
-      <button type="submit" class="submit-btn">Sign In</button>
-    </form>
+                <!-- Logo repeated on mobile -->
+                <div class="mobile-logo">
+                    <img src="{% static 'images/evalify_icon.PNG' %}" alt="Evalify" class="logo-img">
+                    <span class="logo-text">Evalify</span>
+                </div>
 
-    <p class="login-link" style="margin-top:20px">
-      Don't have an account?
-      <a href="{% url 'sign_up_html' %}">Sign up</a>
-    </p>
-  </div>
-</div>
+                <h3>Sign In</h3>
+                <p class="form-sub">Enter your credentials to continue</p>
 
-<script src="{% static 'js/sign_in_script.js' %}"></script>
+                {% if request.GET.registered %}
+                <div class="alert alert-success">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    Account created successfully. Please sign in.
+                </div>
+                {% endif %}
+
+                {% if error %}
+                <div class="alert alert-error">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    {{ error }}
+                </div>
+                {% endif %}
+
+                <form method="POST" action="{% url 'sign_in_html' %}">
+                    {% csrf_token %}
+
+                    <div class="input-group">
+                        <label>Email address</label>
+                        <div class="input-wrap">
+                            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                            <input type="email" name="email" placeholder="you@example.com" required>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <div class="label-row">
+                            <label>Password</label>
+                            <span class="toggle-password" id="togglePass">Show</span>
+                        </div>
+                        <div class="input-wrap">
+                            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            <input type="password" id="passwordField" name="password" placeholder="••••••••" required>
+                        </div>
+                    </div>
+
+                    <div class="remember-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="remember">
+                            <span class="checkmark"></span>
+                            Remember me
+                        </label>
+                        <a href="#" class="forgot-link">Forgot password?</a>
+                    </div>
+
+                    <button type="submit" class="submit-btn">Sign In</button>
+                </form>
+
+                <p class="switch-link">
+                    Don't have an account? <a href="{% url 'sign_up_html' %}">Create one</a>
+                </p>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="{% static 'js/sign_in_script.js' %}"></script>
 </body>
 </html>
