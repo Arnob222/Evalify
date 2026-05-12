@@ -66,6 +66,20 @@
         </select>
       </div>
 
+      <!-- Course -->
+      <div style="flex:1;min-width:200px;">
+        <span class="filter-label">Course</span>
+        <select name="course" id="courseSelect" class="form-control" style="width:100%;max-width:360px;" onchange="onCourseChange(this)">
+          {% for c in courses %}
+          <option value="{{ c.id }}" {% if selected_course and selected_course.id == c.id %}selected{% endif %}>
+            {{ c.code }}: {{ c.name }} ({{ c.semester }})
+          </option>
+          {% empty %}
+          <option disabled>No courses match</option>
+          {% endfor %}
+        </select>
+      </div>
+
       <!-- Section -->
       <div>
         <span class="filter-label">Section
@@ -73,28 +87,14 @@
           <span style="color:var(--teal);font-weight:700;">(filtered)</span>
           {% endif %}
         </span>
-        <select name="section" class="form-control" style="width:260px;" onchange="onSectionChange(this)">
+        <select name="section" class="form-control" style="width:220px;" onchange="onSectionChange(this)">
           <option value="">— All Students —</option>
           {% for sec in all_sections %}
           <option value="{{ sec.id }}"
-            data-course="{{ sec.course.id }}"
             {% if selected_section and selected_section.id == sec.id %}selected{% endif %}>
-            {{ sec.course.code }} · Sec {{ sec.name }} · {{ sec.batch }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- Course -->
-      <div style="flex:1;min-width:200px;">
-        <span class="filter-label">Course</span>
-        <select name="course" id="courseSelect" class="form-control" style="width:100%;max-width:360px;" onchange="document.getElementById('filterForm').submit()">
-          {% for c in courses %}
-          <option value="{{ c.id }}" {% if selected_course and selected_course.id == c.id %}selected{% endif %}>
-            {{ c.code }}: {{ c.name }} ({{ c.semester }})
+            Sec {{ sec.name }} · {{ sec.batch }}
           </option>
           {% empty %}
-          <option disabled>No courses match</option>
           {% endfor %}
         </select>
       </div>
@@ -322,13 +322,14 @@
 <script>
 function onSemesterChange(sel) {
   document.querySelector('[name="section"]').value = '';
+  document.getElementById('courseSelect').value = '';
+  document.getElementById('filterForm').submit();
+}
+function onCourseChange(sel) {
+  document.querySelector('[name="section"]').value = '';
   document.getElementById('filterForm').submit();
 }
 function onSectionChange(sel) {
-  const courseId = sel.options[sel.selectedIndex].dataset.course;
-  if (courseId) {
-    document.getElementById('courseSelect').value = courseId;
-  }
   document.getElementById('filterForm').submit();
 }
 </script>

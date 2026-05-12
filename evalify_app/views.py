@@ -4894,17 +4894,6 @@ def _marks_sheet_filter_ctx(request):
     if selected_semester:
         courses = courses.filter(semester=selected_semester)
 
-    if selected_semester:
-        all_sections = (
-            Section.objects.filter(course__semester=selected_semester)
-            .select_related('course').order_by('course__code', 'batch', 'name')
-        )
-    else:
-        all_sections = (
-            Section.objects.all()
-            .select_related('course').order_by('course__code', 'batch', 'name')
-        )
-
     selected_section = None
     selected_course = None
 
@@ -4915,6 +4904,12 @@ def _marks_sheet_filter_ctx(request):
         selected_course = get_object_or_404(Course, id=course_id)
     elif courses.exists():
         selected_course = courses.first()
+
+    # Sections only for the currently selected course
+    all_sections = (
+        Section.objects.filter(course=selected_course).order_by('batch', 'name')
+        if selected_course else Section.objects.none()
+    )
 
     return {
         'courses': courses,

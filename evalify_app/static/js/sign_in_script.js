@@ -16,10 +16,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.left-body > *, .form-card > *').forEach((el, i) => {
         el.style.opacity = '0';
         el.style.transform = 'translateY(12px)';
-        el.style.transition = `opacity .5s ease ${i * 60}ms, transform .5s ease ${i * 60}ms`;
+        el.style.transition = `opacity .5s ease, transform .5s ease`;
         setTimeout(() => {
             el.style.opacity = '1';
             el.style.transform = 'translateY(0)';
-        }, 50);
+        }, 80 + i * 60);
     });
+
+    // Safety net — ensure all elements are visible
+    setTimeout(() => {
+        document.querySelectorAll('.left-body > *, .form-card > *').forEach(el => {
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0)';
+        });
+    }, 2000);
 });

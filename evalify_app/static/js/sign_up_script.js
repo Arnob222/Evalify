@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 { w: '0%',   bg: 'transparent', msg: 'Use letters, numbers & symbols' },
                 { w: '33%',  bg: '#ff6b6b',     msg: 'Weak — add more variety'        },
                 { w: '66%',  bg: '#f59e0b',     msg: 'Medium — almost there'          },
-                { w: '100%', bg: '#00c896',     msg: 'Strong password ✓'              },
+                { w: '100%', bg: '#00c896',     msg: 'Strong password ✓'          },
             ];
             const lvl = score === 0 ? 0 : score <= 1 ? 1 : score <= 2 ? 2 : 3;
             fill.style.width      = levels[lvl].w;
@@ -42,10 +42,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.left-body > *, .form-card > *').forEach((el, i) => {
         el.style.opacity = '0';
         el.style.transform = 'translateY(12px)';
-        el.style.transition = `opacity .5s ease ${i * 55}ms, transform .5s ease ${i * 55}ms`;
+        el.style.transition = `opacity .5s ease, transform .5s ease`;
         setTimeout(() => {
             el.style.opacity = '1';
             el.style.transform = 'translateY(0)';
-        }, 50);
+        }, 80 + i * 55);
     });
+
+    // Safety net — ensure all elements are visible
+    setTimeout(() => {
+        document.querySelectorAll('.left-body > *, .form-card > *').forEach(el => {
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0)';
+        });
+    }, 2000);
 });
